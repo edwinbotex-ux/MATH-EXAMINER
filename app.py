@@ -10,12 +10,11 @@ st.set_page_config(page_title="AI Math Script Examiner", page_icon="📝", layou
 st.title("📝 AI Math Script Examiner")
 st.write("Upload a photograph of a student's handwritten math work to generate an annotated PDF report.")
 
-# Sidebar API Key input
-api_key = st.sidebar.text_input("Enter Gemini API Key", type="password")
+# Fetch API key directly from Streamlit Secrets 
+api_key = st.secrets["GEMINI_API_KEY"] 
+uploaded_file = st.file_uploader("Choose a student script image...", type=["jpg", "jpeg", "png"]) 
+if uploaded_file:
 
-uploaded_file = st.file_uploader("Choose a student script image...", type=["jpg", "jpeg", "png"])
-
-if uploaded_file and api_key:
     if st.button("Grade Script & Generate PDF", type="primary"):
         with st.spinner("Analyzing handwriting and generating PDF..."):
             try:
