@@ -1,35 +1,57 @@
 import streamlit as st
 import weasyprint
 import json
+import io
 from PIL import Image
 from google import genai
+from pypdf import PdfReader
+from pdf2image import convert_from_bytes
 
 # Page configuration
 st.set_page_config(page_title="AI Math Script Examiner", page_icon="📝", layout="centered")
 
 st.title("📝 AI Math Script Examiner")
-st.write("Upload a photograph of a student's handwritten math work to generate an annotated PDF report.")
+st.write("Upload handwritten student scripts (JPG, PNG, or PDF) to generate a single combined annotated PDF report.")
 
-# Fetch API key directly from Streamlit Secrets 
-api_key = st.secrets["GEMINI_API_KEY"] 
-uploaded_file = st.file_uploader("Choose a student script image...", type=["jpg", "jpeg", "png"]) 
-if uploaded_file:
+# Fetch API key directly from Streamlit Secrets
+api_key = st.secrets["GEMINI_API_KEY"]
 
-    if st.button("Grade Script & Generate PDF", type="primary"):
-        with st.spinner("Analyzing handwriting and generating PDF..."):
+# Allow multiple files & multiple formats
+uploaded_files = st.file_uploader(
+    "Choose student script files (Images or PDFs)...", 
+    type=["jpg", "jpeg", "png", "pdf"], 
+    accept_multiple_files=True
+)
+
+if uploaded_files:
+    if st.button("Grade All Scripts & Generate Combined PDF", type="primary"):
+        with st.spinner("Processing files, evaluating handwriting, and compiling PDF..."):
             try:
-                # 1. Initialize Gemini Client
                 client = genai.Client(api_key=api_key)
-                img = Image.open(uploaded_file)
+                all_images = []
+
+                # 1. Convert all uploaded files/pages into PIL Images
+                for file in uploaded_files:
+                    file_bytes = file.read()
+                    if file.name.lower().endswith('.pdf'):
+                        # Convert PDF pages to images
+                        pdf_images = convert_from_bytes(file_bytes)
+                        all_images.extend(pdf_images)
+                    else:
+                        # Standard image file
+                        img = Image.open(io.BytesIO(file_bytes))
+                        all_images.append(img)
+
+                st.info(f"Loaded {len(all_images)} total page(s) across {len(uploaded_files)} file(s). Evaluating...")
 
                 prompt = """
                 You are an expert mathematics examiner. 
-                Analyze the provided image of handwritten student work.
+                Analyze the provided image(s) of handwritten student work across all pages.
                 
                 Evaluate every question step-by-step and return ONLY a single valid JSON object with NO markdown formatting around it.
                 Use this exact JSON format:
                 {
-                    "instruction": "Question heading/instructions from image",
+                    "instruction": "Question heading/instructions from image(s)",
                     "questions": [
                         {
                             "title": "a) 3x² + 4x + 1 = 0",
@@ -48,9 +70,11 @@ if uploaded_file:
                 }
                 """
 
+                # Send all collected page images to Gemini simultaneously
+                contents_payload = all_images + [prompt]
                 response = client.models.generate_content(
                     model='gemini-3.6-flash',
-                    contents=[img, prompt]
+                    contents=contents_payload
                 )
 
                 # Clean response string
@@ -64,7 +88,7 @@ if uploaded_file:
 
                 student_data = json.loads(raw_text.strip())
 
-                # 2. Render HTML & Generate PDF
+                # 2. Render HTML & Generate Combined PDF
                 total_score = sum(item["score"] for item in student_data["questions"])
                 max_score = sum(item["max_score"] for item in student_data["questions"])
                 percentage = round((total_score / max_score) * 100, 1) if max_score > 0 else 0
@@ -153,15 +177,13 @@ if uploaded_file:
 """
                 pdf_bytes = weasyprint.HTML(string=html_content).write_pdf()
 
-                st.success("Evaluation complete!")
+                st.success("All pages evaluated successfully!")
                 st.download_button(
-                    label="📄 Download Marked PDF",
+                    label="📄 Download Combined Marked PDF",
                     data=pdf_bytes,
-                    file_name="marked_learner_script.pdf",
+                    file_name="combined_marked_script.pdf",
                     mime="application/pdf"
                 )
 
             except Exception as e:
-                st.error(f"Error processing script: {e}")
-elif uploaded_file and not api_key:
-    st.warning("Please enter your Gemini API Key in the left sidebar to proceed.")
+                st.error(f"Error processing scripts: {e}")
