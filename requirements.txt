@@ -2,3 +2,5 @@ streamlit
 google-genai
 weasyprint
 pillow
+pypdf
+pdf2image
