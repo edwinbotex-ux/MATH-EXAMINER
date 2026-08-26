@@ -3,6 +3,7 @@ import weasyprint
 import json
 import io
 import re
+import random
 from PIL import Image
 from google import genai
 from pypdf import PdfReader
@@ -14,8 +15,14 @@ st.set_page_config(page_title="AI Math Script Examiner", page_icon="📝", layou
 st.title("📝 AI Math Script Examiner")
 st.write("Upload handwritten student scripts (JPG, PNG, or PDF) to generate a single combined annotated PDF report.")
 
-# Fetch API key directly from Streamlit Secrets
-api_key = st.secrets["GEMINI_API_KEY"]
+# Fetch API key(s) directly from Streamlit Secrets
+if "GEMINI_API_KEYS" in st.secrets:
+    api_keys_list = st.secrets["GEMINI_API_KEYS"]
+elif "GEMINI_API_KEY" in st.secrets:
+    api_keys_list = [st.secrets["GEMINI_API_KEY"]]
+else:
+    st.error("No API key found in Streamlit Secrets!")
+    st.stop()
 
 # Allow multiple files & multiple formats
 uploaded_files = st.file_uploader(
@@ -28,7 +35,10 @@ if uploaded_files:
     if st.button("Grade All Scripts & Generate Combined PDF", type="primary"):
         with st.spinner("Processing files, evaluating handwriting, and compiling PDF..."):
             try:
-                client = genai.Client(api_key=api_key)
+                # Randomly select a key to distribute request limits across accounts
+                selected_key = random.choice(api_keys_list)
+                client = genai.Client(api_key=selected_key)
+                
                 all_images = []
 
                 # 1. Convert all uploaded files/pages into PIL Images
@@ -89,7 +99,7 @@ if uploaded_files:
                 # Send all collected page images to Gemini simultaneously
                 contents_payload = all_images + [prompt]
                 response = client.models.generate_content(
-                    model='gemini-3.6-flash',
+                    model='gemini-2.5-flash',
                     contents=contents_payload
                 )
 
