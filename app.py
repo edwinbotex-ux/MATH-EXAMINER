@@ -45,11 +45,14 @@ if uploaded_files:
                 st.info(f"Loaded {len(all_images)} total page(s) across {len(uploaded_files)} file(s). Evaluating...")
 
                 prompt = """
-                You are an expert mathematics secondary teacher and examiner. 
+                You are an expert secondary school mathematics teacher and national examiner. 
                 Analyze the provided image(s) of handwritten student work.
                 
-                Evaluate every question step-by-step. For any step where the student made a mistake or left the step/question unattempted:
-                - Provide a clear, step-by-step concept breakdown explaining *why* the error occurred and *how* to solve it correctly from first principles, so the learner can study and understand it independently.
+                Evaluate every question step-by-step. For any step where the student made a mistake or left a step/question unattempted:
+                1. Provide a clear, step-by-step concept breakdown explaining why the error occurred and how to solve it from first principles.
+                2. VISUAL CORRECTIONS: If the question involves geometry (e.g., sectors, segments, angles), coordinate graphs (e.g., cubic curves, transformations, rotations), or data distribution (e.g., frequency tables, cumulative frequency):
+                   - Include clean, well-formatted raw inline SVG code or raw HTML table code in "visual_correction" to visually demonstrate the correct answer.
+                   - Keep SVG dimensions around width="350" height="200" with clear lines, labels, and stroke colors.
                 
                 Return ONLY a single valid JSON object with NO markdown formatting around it.
                 Use this exact JSON format:
@@ -57,29 +60,26 @@ if uploaded_files:
                     "instruction": "Question heading/instructions from image(s)",
                     "questions": [
                         {
-                            "title": "Question 1: Solve 3x² + 4x + 1 = 0",
-                            "max_score": 3,
-                            "score": 1,
+                            "title": "Question Title",
+                            "max_score": 4,
+                            "score": 2,
                             "learner_working": [
                                 {
-                                    "text": "3x² + 3x + x + 1 = 0", 
-                                    "tick": true, 
-                                    "method_label": "M1 (Factoring setup)"
-                                },
-                                {
-                                    "text": "3x(x + 1) + 1(x + 1) = 0 -> x = 1 or x = 1/3", 
+                                    "text": "Student working text", 
+                                    "tick": false,
+                                    "cross": true,
                                     "strikethrough": true, 
-                                    "cross": true, 
-                                    "error_label": "Sign Error in Final Roots", 
-                                    "correction": "x = -1 or x = -1/3",
-                                    "concept_explanation": "When solving (3x + 1)(x + 1) = 0, set each factor to zero individually: 1) 3x + 1 = 0 => 3x = -1 => x = -1/3. 2) x + 1 = 0 => x = -1. Remember that shifting a positive constant across the equals sign changes its sign to negative."
+                                    "error_label": "Incorrect Graph / Calculation", 
+                                    "correction": "Correct mathematical output",
+                                    "concept_explanation": "Step-by-step theoretical breakdown...",
+                                    "visual_correction": "<svg width='300' height='180'>...</svg>" 
                                 }
                             ]
                         }
                     ],
                     "feedback": {
-                        "strengths": ["List key strengths observed"],
-                        "improvements": ["List specific areas for improvement"]
+                        "strengths": ["Key strengths"],
+                        "improvements": ["Areas for improvement"]
                     }
                 }
                 """
@@ -136,6 +136,15 @@ if uploaded_files:
                             </div>
                             '''
 
+                        # Dynamic Visual Corrections (Tables, SVG Graphs, Geometry)
+                        if line.get("visual_correction"):
+                            working_lines_html += f'''
+                            <div class="visual-box">
+                                <strong>📊 Visual Correction & Illustration:</strong><br/>
+                                <div class="visual-content">{line["visual_correction"]}</div>
+                            </div>
+                            '''
+
                     questions_html += f"""
                     <div class="question-block">
                         <div class="question-title">{q["title"]} &nbsp;&nbsp;&nbsp; [{q["max_score"]} Marks]</div>
@@ -173,6 +182,11 @@ if uploaded_files:
         .err-label {{ color: #d90000; font-weight: bold; font-size: 9.5pt; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px; display: inline-block; }}
         .correction {{ color: #d90000; font-weight: bold; font-family: "Courier New", monospace; font-size: 10pt; margin-top: 4px; }}
         .explanation-box {{ background-color: #fff9e6; border-left: 3px solid #ff9900; color: #333; font-size: 9.5pt; padding: 8px 12px; margin-top: 6px; margin-bottom: 8px; border-radius: 4px; line-height: 1.4; }}
+        .visual-box {{ background-color: #f0f8ff; border-left: 3px solid #0066cc; color: #222; font-size: 9.5pt; padding: 10px 12px; margin-top: 6px; margin-bottom: 8px; border-radius: 4px; }}
+        .visual-content {{ margin-top: 8px; text-align: center; }}
+        .visual-content table {{ margin: 0 auto; border-collapse: collapse; font-size: 9pt; }}
+        .visual-content th, .visual-content td {{ border: 1px solid #0066cc; padding: 4px 8px; text-align: center; }}
+        .visual-content th {{ background-color: #e6f2ff; }}
         .sub-score {{ font-weight: bold; color: #d90000; font-size: 12pt; border: 1.5px solid #d90000; padding: 4px 8px; border-radius: 4px; display: inline-block; background-color: #fff; }}
         .feedback-box {{ border: 2px solid #d90000; background-color: #fff0f0; border-radius: 6px; padding: 15px; margin-top: 20px; page-break-inside: avoid; }}
         .feedback-title {{ color: #d90000; font-weight: bold; font-size: 12pt; margin-bottom: 8px; text-transform: uppercase; }}
