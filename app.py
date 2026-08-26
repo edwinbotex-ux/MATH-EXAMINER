@@ -45,21 +45,35 @@ if uploaded_files:
                 st.info(f"Loaded {len(all_images)} total page(s) across {len(uploaded_files)} file(s). Evaluating...")
 
                 prompt = """
-                You are an expert mathematics examiner. 
-                Analyze the provided image(s) of handwritten student work across all pages.
+                You are an expert mathematics secondary teacher and examiner. 
+                Analyze the provided image(s) of handwritten student work.
                 
-                Evaluate every question step-by-step and return ONLY a single valid JSON object with NO markdown formatting around it.
+                Evaluate every question step-by-step. For any step where the student made a mistake or left the step/question unattempted:
+                - Provide a clear, step-by-step concept breakdown explaining *why* the error occurred and *how* to solve it correctly from first principles, so the learner can study and understand it independently.
+                
+                Return ONLY a single valid JSON object with NO markdown formatting around it.
                 Use this exact JSON format:
                 {
                     "instruction": "Question heading/instructions from image(s)",
                     "questions": [
                         {
-                            "title": "a) 3x² + 4x + 1 = 0",
+                            "title": "Question 1: Solve 3x² + 4x + 1 = 0",
                             "max_score": 3,
-                            "score": 2,
+                            "score": 1,
                             "learner_working": [
-                                {"text": "Sum = 4 { 1 and 3 }", "tick": true, "method_label": "M1 (Setup)"},
-                                {"text": "x = -1/3 or 1", "strikethrough": true, "cross": true, "error_label": "Transcription error", "correction": "x = -1/3 or x = -1"}
+                                {
+                                    "text": "3x² + 3x + x + 1 = 0", 
+                                    "tick": true, 
+                                    "method_label": "M1 (Factoring setup)"
+                                },
+                                {
+                                    "text": "3x(x + 1) + 1(x + 1) = 0 -> x = 1 or x = 1/3", 
+                                    "strikethrough": true, 
+                                    "cross": true, 
+                                    "error_label": "Sign Error in Final Roots", 
+                                    "correction": "x = -1 or x = -1/3",
+                                    "concept_explanation": "When solving (3x + 1)(x + 1) = 0, set each factor to zero individually: 1) 3x + 1 = 0 => 3x = -1 => x = -1/3. 2) x + 1 = 0 => x = -1. Remember that shifting a positive constant across the equals sign changes its sign to negative."
+                                }
                             ]
                         }
                     ],
@@ -108,10 +122,19 @@ if uploaded_files:
                             err_tag = f'<span class="err-label" style="color:#008000; background:#e6ffe6;">{line["method_label"]}</span>'
                         
                         strikethrough_style = ' style="text-decoration: line-through;"' if line.get("strikethrough") else ""
-                        working_lines_html += f'<div><span{strikethrough_style}>{text}</span> {is_tick}{is_cross} {err_tag}</div>'
+                        working_lines_html += f'<div style="margin-top: 6px;"><span{strikethrough_style}>{text}</span> {is_tick}{is_cross} {err_tag}</div>'
                         
                         if line.get("correction"):
-                            working_lines_html += f'<div class="correction">Correction: {line["correction"]}</div>'
+                            working_lines_html += f'<div class="correction">Correct Answer: {line["correction"]}</div>'
+                        
+                        # Step-by-Step Concept Guide Box
+                        if line.get("concept_explanation"):
+                            working_lines_html += f'''
+                            <div class="explanation-box">
+                                <strong>💡 Step-by-Step Concept Guide:</strong><br/>
+                                {line["concept_explanation"]}
+                            </div>
+                            '''
 
                     questions_html += f"""
                     <div class="question-block">
@@ -149,6 +172,7 @@ if uploaded_files:
         .cross {{ color: #d90000; font-weight: bold; font-size: 12pt; }}
         .err-label {{ color: #d90000; font-weight: bold; font-size: 9.5pt; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px; display: inline-block; }}
         .correction {{ color: #d90000; font-weight: bold; font-family: "Courier New", monospace; font-size: 10pt; margin-top: 4px; }}
+        .explanation-box {{ background-color: #fff9e6; border-left: 3px solid #ff9900; color: #333; font-size: 9.5pt; padding: 8px 12px; margin-top: 6px; margin-bottom: 8px; border-radius: 4px; line-height: 1.4; }}
         .sub-score {{ font-weight: bold; color: #d90000; font-size: 12pt; border: 1.5px solid #d90000; padding: 4px 8px; border-radius: 4px; display: inline-block; background-color: #fff; }}
         .feedback-box {{ border: 2px solid #d90000; background-color: #fff0f0; border-radius: 6px; padding: 15px; margin-top: 20px; page-break-inside: avoid; }}
         .feedback-title {{ color: #d90000; font-weight: bold; font-size: 12pt; margin-bottom: 8px; text-transform: uppercase; }}
