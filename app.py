@@ -15,14 +15,21 @@ st.set_page_config(page_title="AI Math Script Examiner", page_icon="📝", layou
 st.title("📝 AI Math Script Examiner")
 st.write("Upload handwritten student scripts (JPG, PNG, or PDF) to generate a single combined annotated PDF report.")
 
-# Fetch API key(s) directly from Streamlit Secrets
-if "GEMINI_API_KEYS" in st.secrets:
-    api_keys_list = st.secrets["GEMINI_API_KEYS"]
-elif "GEMINI_API_KEY" in st.secrets:
-    api_keys_list = [st.secrets["GEMINI_API_KEY"]]
-else:
+# Fetch API key(s) safely from Streamlit Secrets
+raw_keys = st.secrets.get("GEMINI_API_KEYS") or st.secrets.get("GEMINI_API_KEY")
+
+if not raw_keys:
     st.error("No API key found in Streamlit Secrets!")
     st.stop()
+
+# Ensure api_keys_list is always a list of clean strings
+if isinstance(raw_keys, list):
+    api_keys_list = [str(k).strip() for k in raw_keys]
+elif isinstance(raw_keys, str):
+    # Handle comma-separated keys or single key
+    api_keys_list = [k.strip() for k in raw_keys.split(",") if k.strip()]
+else:
+    api_keys_list = [str(raw_keys).strip()]
 
 # Allow multiple files & multiple formats
 uploaded_files = st.file_uploader(
