@@ -89,7 +89,7 @@ if uploaded_files:
                 # Send all collected page images to Gemini simultaneously
                 contents_payload = all_images + [prompt]
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-1.5-flash',
                     contents=contents_payload
                 )
 
