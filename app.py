@@ -2,6 +2,7 @@ import streamlit as st
 import weasyprint
 import json
 import io
+import re
 from PIL import Image
 from google import genai
 from pypdf import PdfReader
@@ -50,7 +51,8 @@ if uploaded_files:
                 
                 Evaluate every question step-by-step. For any step where the student made a mistake or left a step/question unattempted:
                 1. Provide a clear, step-by-step concept breakdown explaining why the error occurred and how to solve it from first principles.
-                2. VISUAL CORRECTIONS: If the question involves geometry (e.g., sectors, segments, angles), coordinate graphs (e.g., cubic curves, transformations, rotations), or data distribution (e.g., frequency tables, cumulative frequency):
+                2. FORMATTING FOR STEPS: When writing step-by-step explanations in "concept_explanation", DO NOT use plain numbers like "1)", "2)", "1.", or "2.". Instead, explicitly label each step using the exact format **[Step 1]**, **[Step 2]**, **[Step 3]** at the beginning of each step.
+                3. VISUAL CORRECTIONS: If the question involves geometry (e.g., sectors, segments, angles), coordinate graphs (e.g., cubic curves, transformations, rotations), or data distribution (e.g., frequency tables, cumulative frequency):
                    - Include clean, well-formatted raw inline SVG code or raw HTML table code in "visual_correction" to visually demonstrate the correct answer.
                    - Keep SVG dimensions around width="350" height="200" with clear lines, labels, and stroke colors.
                 
@@ -71,7 +73,7 @@ if uploaded_files:
                                     "strikethrough": true, 
                                     "error_label": "Incorrect Graph / Calculation", 
                                     "correction": "Correct mathematical output",
-                                    "concept_explanation": "Step-by-step theoretical breakdown...",
+                                    "concept_explanation": "**[Step 1]** First step detail... **[Step 2]** Second step detail...",
                                     "visual_correction": "<svg width='300' height='180'>...</svg>" 
                                 }
                             ]
@@ -127,12 +129,21 @@ if uploaded_files:
                         if line.get("correction"):
                             working_lines_html += f'<div class="correction">Correct Answer: {line["correction"]}</div>'
                         
-                        # Step-by-Step Concept Guide Box
+                        # Step-by-Step Concept Guide Box with Blue Step Highlights
                         if line.get("concept_explanation"):
+                            explanation_text = line["concept_explanation"]
+                            
+                            # Format [Step X] tags into styled HTML spans
+                            formatted_explanation = re.sub(
+                                r'(\*\*\[Step \d+\]\*\*|\[Step \d+\]|\*\*Step \d+:\*\*)', 
+                                r'<span class="step-tag">\1</span>', 
+                                explanation_text
+                            )
+
                             working_lines_html += f'''
                             <div class="explanation-box">
                                 <strong>💡 Step-by-Step Concept Guide:</strong><br/>
-                                {line["concept_explanation"]}
+                                {formatted_explanation}
                             </div>
                             '''
 
@@ -182,6 +193,7 @@ if uploaded_files:
         .err-label {{ color: #d90000; font-weight: bold; font-size: 9.5pt; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px; display: inline-block; }}
         .correction {{ color: #d90000; font-weight: bold; font-family: "Courier New", monospace; font-size: 10pt; margin-top: 4px; }}
         .explanation-box {{ background-color: #fff9e6; border-left: 3px solid #ff9900; color: #333; font-size: 9.5pt; padding: 8px 12px; margin-top: 6px; margin-bottom: 8px; border-radius: 4px; line-height: 1.4; }}
+        .step-tag {{ color: #0056b3; font-weight: bold; margin-right: 4px; display: inline-block; margin-top: 4px; }}
         .visual-box {{ background-color: #f0f8ff; border-left: 3px solid #0066cc; color: #222; font-size: 9.5pt; padding: 10px 12px; margin-top: 6px; margin-bottom: 8px; border-radius: 4px; }}
         .visual-content {{ margin-top: 8px; text-align: center; }}
         .visual-content table {{ margin: 0 auto; border-collapse: collapse; font-size: 9pt; }}
