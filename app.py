@@ -1097,5 +1097,4 @@ if st.session_state.pdf_bytes:
         file_name="marked_math_script.pdf",
         mime="application/pdf"
     )
-```
 
