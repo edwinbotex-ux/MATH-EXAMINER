@@ -25,7 +25,3 @@ Return ONLY a valid JSON object:
     }
 }
 """
-                
-
-            except Exception as e:
-                st.error(f"Error processing scripts: {e}")
