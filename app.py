@@ -91,7 +91,7 @@ if uploaded_files:
 
                 contents_payload = all_images + [prompt]
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-3.6-flash',
                     contents=contents_payload
                 )
 
