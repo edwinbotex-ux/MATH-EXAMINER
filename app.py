@@ -28,12 +28,12 @@ st.title("📝 AI Math Script Examiner")
 
 st.write(
     "Upload handwritten student scripts (JPG, PNG, or PDF) "
-    "to generate a marked mathematics report."
+    "to generate a single combined annotated PDF report."
 )
 
 
 # ============================================================
-# GEMINI API KEYS
+# FETCH API KEY(S)
 # ============================================================
 
 raw_keys = (
@@ -47,22 +47,20 @@ if not raw_keys:
 
 if isinstance(raw_keys, list):
     api_keys_list = [
-        str(key).strip()
-        for key in raw_keys
-        if str(key).strip()
+        str(k).strip()
+        for k in raw_keys
+        if str(k).strip()
     ]
 
 elif isinstance(raw_keys, str):
     api_keys_list = [
-        key.strip()
-        for key in raw_keys.split(",")
-        if key.strip()
+        k.strip()
+        for k in raw_keys.split(",")
+        if k.strip()
     ]
 
 else:
-    api_keys_list = [
-        str(raw_keys).strip()
-    ]
+    api_keys_list = [str(raw_keys).strip()]
 
 
 # ============================================================
@@ -71,9 +69,6 @@ else:
 
 if "pdf_bytes" not in st.session_state:
     st.session_state.pdf_bytes = None
-
-if "student_data" not in st.session_state:
-    st.session_state.student_data = None
 
 
 # ============================================================
@@ -88,7 +83,7 @@ uploaded_files = st.file_uploader(
 
 
 # ============================================================
-# HELPER: MATPLOTLIB IMAGE TO BASE64
+# HELPER: FIGURE TO BASE64
 # ============================================================
 
 def figure_to_base64(fig):
@@ -110,31 +105,25 @@ def figure_to_base64(fig):
         buffer.read()
     ).decode("utf-8")
 
-    return (
-        "data:image/png;base64,"
-        + encoded
-    )
+    return "data:image/png;base64," + encoded
 
 
 # ============================================================
-# HELPER: DRAW FUNCTION GRAPH
+# HELPER: FUNCTION GRAPH
 # ============================================================
 
 def draw_function_graph(data):
 
-    equation = str(
-        data.get("equation", "")
-    ).strip()
-
-    if not equation:
-        return ""
-
     try:
 
-        expression = equation.replace(
-            "^",
-            "**"
-        )
+        equation = str(
+            data.get("equation", "")
+        ).strip()
+
+        if not equation:
+            return ""
+
+        expression = equation.replace("^", "**")
 
         if "=" in expression:
             expression = expression.split(
@@ -179,16 +168,15 @@ def draw_function_graph(data):
         )
 
         ax.axhline(0)
+
         ax.axvline(0)
 
-        ax.plot(
-            x,
-            y
-        )
+        ax.plot(x, y)
 
         ax.grid(True)
 
         ax.set_xlabel("x")
+
         ax.set_ylabel("y")
 
         ax.set_title(
@@ -205,29 +193,29 @@ def draw_function_graph(data):
 
 
 # ============================================================
-# HELPER: DRAW POINT GRAPH
+# HELPER: POINT GRAPH
 # ============================================================
 
 def draw_points_graph(data):
 
-    points = data.get(
-        "points",
-        []
-    )
-
-    if not points:
-        return ""
-
     try:
 
+        points = data.get(
+            "points",
+            []
+        )
+
+        if not points:
+            return ""
+
         x_values = [
-            float(point["x"])
-            for point in points
+            float(p["x"])
+            for p in points
         ]
 
         y_values = [
-            float(point["y"])
-            for point in points
+            float(p["y"])
+            for p in points
         ]
 
         fig, ax = plt.subplots(
@@ -235,6 +223,7 @@ def draw_points_graph(data):
         )
 
         ax.axhline(0)
+
         ax.axvline(0)
 
         ax.plot(
@@ -246,6 +235,7 @@ def draw_points_graph(data):
         ax.grid(True)
 
         ax.set_xlabel("x")
+
         ax.set_ylabel("y")
 
         ax.set_title(
@@ -262,83 +252,7 @@ def draw_points_graph(data):
 
 
 # ============================================================
-# HELPER: DRAW GEOMETRY
-# ============================================================
-
-def draw_geometry(data):
-
-    points = data.get(
-        "points",
-        []
-    )
-
-    if len(points) < 2:
-        return ""
-
-    try:
-
-        x_values = [
-            float(point["x"])
-            for point in points
-        ]
-
-        y_values = [
-            float(point["y"])
-            for point in points
-        ]
-
-        if len(points) > 2:
-
-            x_values.append(
-                float(points[0]["x"])
-            )
-
-            y_values.append(
-                float(points[0]["y"])
-            )
-
-        fig, ax = plt.subplots(
-            figsize=(5, 4)
-        )
-
-        ax.plot(
-            x_values,
-            y_values,
-            marker="o"
-        )
-
-        for point in points:
-
-            label = point.get(
-                "label",
-                ""
-            )
-
-            ax.text(
-                float(point["x"]),
-                float(point["y"]),
-                " " + str(label)
-            )
-
-        ax.set_aspect("equal")
-
-        ax.grid(True)
-
-        ax.set_title(
-            data.get(
-                "title",
-                "Correct Diagram"
-            )
-        )
-
-        return figure_to_base64(fig)
-
-    except Exception:
-        return ""
-
-
-# ============================================================
-# HELPER: CREATE TABLE
+# HELPER: HTML TABLE
 # ============================================================
 
 def create_html_table(data):
@@ -356,9 +270,7 @@ def create_html_table(data):
     if not headers:
         return ""
 
-    table_html = (
-        '<table class="math-table">'
-    )
+    table_html = '<table class="math-table">'
 
     table_html += "<tr>"
 
@@ -396,67 +308,74 @@ def create_html_table(data):
 # ============================================================
 
 prompt = """
-You are an expert secondary-school mathematics examiner.
+You are an expert secondary-school mathematics teacher and examiner.
 
-Analyze the uploaded handwritten mathematics script carefully.
+Analyze the uploaded handwritten student mathematics script carefully.
 
-Your job is to identify every question and evaluate the student's
-mathematical work fairly.
+Your task is to identify every question, repeat the question,
+transcribe the student's work, mark it fairly and provide correct
+working where necessary.
 
-IMPORTANT:
+IMPORTANT EXAMINER RULES:
 
-1. Repeat the COMPLETE question in the "question_text" field.
-   Repeating the question is essential.
+1. Repeat the COMPLETE question exactly as it appears in the script
+   using the field "question_text".
 
-2. Read and transcribe the student's working in the order written.
+2. Repeating the question is essential.
 
-3. Mark each question fairly.
+3. Do not invent student working that is not visible.
 
-4. Award marks for correct mathematical method and correct answers.
+4. Transcribe the student's mathematical working in the order written.
 
-5. Do not invent student work that is not visible.
+5. Award marks fairly for:
+   - correct method
+   - correct mathematical steps
+   - correct calculations
+   - correct final answer
 
-6. If a student did not attempt a question, set:
-   "status": "undone"
+6. If a question is fully correct:
+   set "status" to "correct"
+   and return an empty "correct_solution" list.
 
-7. If a student attempted the question but made an error, set:
-   "status": "incorrect"
+7. If a question contains errors:
+   set "status" to "incorrect"
+   and provide the complete correct working in "correct_solution".
 
-8. If the student's entire solution is correct, set:
-   "status": "correct"
+8. If a question was not attempted:
+   set "status" to "undone"
+   and provide the complete correct working.
 
-9. ONLY provide "correct_solution" when:
-   - status is "incorrect"
-   OR
-   - status is "undone"
+9. Every incorrect student line must contain:
+   - error_type
+   - explanation
 
-10. If status is "correct", return:
-    "correct_solution": []
+10. Do not provide a correction for a fully correct question.
 
-11. For an undone question, provide the COMPLETE correct
-    step-by-step mathematical working.
+11. The correct_solution must be a clear step-by-step mathematical
+    solution.
 
-12. Keep explanations short and clear.
+12. Keep explanations concise.
 
-13. Do not explain correct student working.
+VISUAL OUTPUT:
 
-VISUAL CORRECTIONS:
+If the correct solution requires a table, graph or visual,
+return the visual object.
 
-If no visual correction is needed:
+If no visual is required:
 
 "visual": null
 
-For a table:
+TABLE FORMAT:
 
 "visual": {
     "type": "table",
     "headers": ["Column 1", "Column 2"],
     "rows": [
-        ["Value", "Value"]
+        ["Value 1", "Value 2"]
     ]
 }
 
-For a function graph:
+FUNCTION GRAPH FORMAT:
 
 "visual": {
     "type": "function_graph",
@@ -466,7 +385,7 @@ For a function graph:
     "x_max": 5
 }
 
-For a coordinate graph:
+POINT GRAPH FORMAT:
 
 "visual": {
     "type": "points_graph",
@@ -478,30 +397,18 @@ For a coordinate graph:
     ]
 }
 
-For a simple geometry diagram:
-
-"visual": {
-    "type": "geometry",
-    "title": "Correct Diagram",
-    "points": [
-        {"label": "A", "x": 0, "y": 0},
-        {"label": "B", "x": 6, "y": 0},
-        {"label": "C", "x": 3, "y": 4}
-    ]
-}
-
 Return ONLY one valid JSON object.
 
 Use exactly this structure:
 
 {
-    "instruction": "Exam heading or instruction",
+    "instruction": "Exam heading or instructions",
 
     "questions": [
         {
             "title": "Question 1",
 
-            "question_text": "Complete question",
+            "question_text": "Complete question exactly as read",
 
             "max_score": 4,
 
@@ -511,20 +418,20 @@ Use exactly this structure:
 
             "working": [
                 {
-                    "text": "Student written line",
+                    "text": "Student written mathematical line",
                     "correct": true
                 },
                 {
                     "text": "Incorrect student line",
                     "correct": false,
                     "error_type": "Calculation Error",
-                    "explanation": "Brief reason for the error."
+                    "explanation": "Brief reason why the step is incorrect."
                 }
             ],
 
             "correct_solution": [
-                "Correct mathematical step 1",
-                "Correct mathematical step 2",
+                "Correct step 1",
+                "Correct step 2",
                 "Correct final answer"
             ],
 
@@ -534,11 +441,10 @@ Use exactly this structure:
 
     "feedback": {
         "strengths": [
-            "Strength 1"
+            "Key strength"
         ],
-
         "improvements": [
-            "Improvement 1"
+            "Key improvement"
         ]
     }
 }
@@ -546,18 +452,18 @@ Use exactly this structure:
 
 
 # ============================================================
-# PROCESS
+# PROCESS FILES
 # ============================================================
 
 if uploaded_files:
 
     if st.button(
-        "Grade All Scripts & Generate Marked PDF",
+        "Grade All Scripts & Generate Combined PDF",
         type="primary"
     ):
 
         with st.spinner(
-            "Reading and marking mathematics script..."
+            "Processing files, evaluating handwriting, and compiling PDF..."
         ):
 
             try:
@@ -580,14 +486,10 @@ if uploaded_files:
 
                     file_bytes = file.read()
 
-                    if file.name.lower().endswith(
-                        ".pdf"
-                    ):
+                    if file.name.lower().endswith(".pdf"):
 
-                        pdf_images = (
-                            convert_from_bytes(
-                                file_bytes
-                            )
+                        pdf_images = convert_from_bytes(
+                            file_bytes
                         )
 
                         for img in pdf_images:
@@ -603,9 +505,7 @@ if uploaded_files:
                     else:
 
                         img = Image.open(
-                            io.BytesIO(
-                                file_bytes
-                            )
+                            io.BytesIO(file_bytes)
                         ).convert("RGB")
 
                         img.thumbnail(
@@ -615,146 +515,92 @@ if uploaded_files:
                         all_images.append(img)
 
                 st.info(
-                    f"Loaded {len(all_images)} page(s)."
+                    f"Loaded {len(all_images)} total page(s). Evaluating..."
                 )
 
                 # --------------------------------------------
-                # GEMINI
+                # SEND TO GEMINI
                 # --------------------------------------------
 
                 contents_payload = (
                     all_images + [prompt]
                 )
 
-                response = (
-                    client.models.generate_content(
-                        model="gemini-3.6-flash",
-                        contents=contents_payload,
-                        config={
-                            "response_mime_type":
-                                "application/json",
-
-                            "max_output_tokens":
-                                8192
-                        }
-                    )
+                response = client.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=contents_payload,
+                    config={
+                        "response_mime_type": "application/json",
+                        "max_output_tokens": 8192
+                    }
                 )
 
                 student_data = json.loads(
-                    response.text
-                )
-
-                st.session_state.student_data = (
-                    student_data
+                    response.text.strip()
                 )
 
                 # --------------------------------------------
-                # TOTAL MARKS
+                # TOTAL SCORE
                 # --------------------------------------------
 
                 total_score = sum(
-                    question.get(
-                        "score",
-                        0
-                    )
-                    for question in student_data.get(
+                    item.get("score", 0)
+                    for item in student_data.get(
                         "questions",
                         []
                     )
                 )
 
                 max_score = sum(
-                    question.get(
-                        "max_score",
-                        0
-                    )
-                    for question in student_data.get(
+                    item.get("max_score", 0)
+                    for item in student_data.get(
                         "questions",
                         []
                     )
                 )
 
-                if max_score > 0:
-
-                    percentage = round(
-                        total_score
-                        /
-                        max_score
-                        *
-                        100,
+                percentage = (
+                    round(
+                        (total_score / max_score) * 100,
                         1
                     )
-
-                else:
-
-                    percentage = 0
+                    if max_score > 0
+                    else 0
+                )
 
                 # --------------------------------------------
-                # BUILD QUESTIONS
+                # QUESTIONS HTML
                 # --------------------------------------------
 
                 questions_html = ""
 
-                for question in student_data.get(
+                for q in student_data.get(
                     "questions",
                     []
                 ):
 
-                    question_title = html.escape(
-                        str(
-                            question.get(
-                                "title",
-                                "Question"
-                            )
-                        )
-                    )
+                    working_lines_html = ""
 
-                    question_text = html.escape(
-                        str(
-                            question.get(
-                                "question_text",
-                                ""
-                            )
-                        )
-                    )
-
-                    score = question.get(
-                        "score",
-                        0
-                    )
-
-                    max_question_score = question.get(
-                        "max_score",
-                        0
-                    )
-
-                    status = question.get(
-                        "status",
-                        "incorrect"
-                    )
-
-                    # ----------------------------------------
-                    # STUDENT WORK
-                    # ----------------------------------------
-
-                    working_html = ""
-
-                    working = question.get(
+                    working_list = q.get(
                         "working",
                         []
                     )
 
-                    if not working:
+                    # ========================================
+                    # STUDENT WORK
+                    # ========================================
 
-                        working_html = """
-                        <div class="undone">
-                            Not attempted.
+                    if not working_list:
+
+                        working_lines_html = """
+                        <div class="student-line undone">
+                            Not attempted
                         </div>
                         """
 
                     else:
 
-                        for line in working:
+                        for line in working_list:
 
                             text = html.escape(
                                 str(
@@ -765,96 +611,144 @@ if uploaded_files:
                                 )
                             )
 
-                            correct = line.get(
+                            is_correct = line.get(
                                 "correct",
                                 False
                             )
 
-                            if correct:
+                            if is_correct:
 
-                                working_html += f"""
-                                <div class="student-line">
-                                    {text}
-                                </div>
-                                """
+                                marking_html = (
+                                    '<span class="tick">'
+                                    '&#10003;'
+                                    '</span>'
+                                )
 
                             else:
 
-                                error_type = html.escape(
-                                    str(
-                                        line.get(
-                                            "error_type",
-                                            "Error"
-                                        )
-                                    )
+                                marking_html = (
+                                    '<span class="cross">'
+                                    '&#10007;'
+                                    '</span>'
                                 )
 
-                                explanation = html.escape(
-                                    str(
-                                        line.get(
-                                            "explanation",
-                                            ""
-                                        )
-                                    )
+                            error_html = ""
+
+                            if (
+                                not is_correct
+                                and line.get(
+                                    "error_type"
                                 )
+                            ):
 
-                                working_html += f"""
-                                <div class="student-line">
-                                    {text}
-                                </div>
-
+                                error_html = f"""
                                 <div class="marking-line">
-                                    ✗ {error_type}
-                                </div>
-
-                                <div class="marking-explanation">
-                                    {explanation}
+                                    {html.escape(
+                                        str(
+                                            line.get(
+                                                "error_type",
+                                                ""
+                                            )
+                                        )
+                                    )}
                                 </div>
                                 """
 
-                    # ----------------------------------------
-                    # CORRECT SOLUTION
-                    # ----------------------------------------
+                            explanation_html = ""
 
-                    correct_solution_html = ""
+                            if (
+                                not is_correct
+                                and line.get(
+                                    "explanation"
+                                )
+                            ):
 
-                    correct_solution = question.get(
+                                explanation_html = f"""
+                                <div class="marking-explanation">
+                                    {html.escape(
+                                        str(
+                                            line.get(
+                                                "explanation",
+                                                ""
+                                            )
+                                        )
+                                    )}
+                                </div>
+                                """
+
+                            working_lines_html += f"""
+
+                            <div class="student-line">
+                                <span class="student-text">
+                                    {text}
+                                </span>
+
+                                <span class="mark-symbol">
+                                    {marking_html}
+                                </span>
+                            </div>
+
+                            {error_html}
+
+                            {explanation_html}
+
+                            """
+
+                    # ========================================
+                    # CORRECT WORKING
+                    # ========================================
+
+                    correct_working_html = ""
+
+                    status = q.get(
+                        "status",
+                        "incorrect"
+                    )
+
+                    correct_solution = q.get(
                         "correct_solution",
                         []
                     )
 
-                    if status in [
-                        "incorrect",
-                        "undone"
-                    ] and correct_solution:
+                    if (
+                        status in [
+                            "incorrect",
+                            "undone"
+                        ]
+                        and correct_solution
+                    ):
 
-                        correct_solution_html = """
-                        <div class="correct-section">
-
-                            <div class="correct-heading">
-                                CORRECT WORKING
-                            </div>
-                        """
+                        correct_lines = ""
 
                         for step in correct_solution:
 
-                            correct_solution_html += f"""
+                            correct_lines += f"""
                             <div class="correct-line">
                                 {html.escape(str(step))}
                             </div>
                             """
 
-                        correct_solution_html += (
-                            "</div>"
-                        )
+                        correct_working_html = f"""
 
-                    # ----------------------------------------
+                        <div class="correct-section">
+
+                            <div class="correct-heading">
+                                CORRECT WORKING
+                            </div>
+
+                            {correct_lines}
+
+                        </div>
+
+                        """
+
+                    # ========================================
                     # VISUAL
-                    # ----------------------------------------
+                    # ========================================
 
                     visual_html = ""
 
-                    visual = question.get(
+                    visual = q.get(
                         "visual"
                     )
 
@@ -866,112 +760,133 @@ if uploaded_files:
 
                         if visual_type == "table":
 
-                            table = create_html_table(
+                            table_html = create_html_table(
                                 visual
                             )
 
-                            if table:
+                            visual_html = f"""
+                            <div class="visual-section">
+                                {table_html}
+                            </div>
+                            """
 
-                                visual_html = f"""
-                                <div class="visual-section">
-                                    {table}
-                                </div>
-                                """
+                        elif visual_type == "function_graph":
 
-                        elif visual_type == (
-                            "function_graph"
-                        ):
-
-                            image_data = (
-                                draw_function_graph(
-                                    visual
-                                )
-                            )
-
-                            if image_data:
-
-                                visual_html = f"""
-                                <div class="visual-section">
-                                    <img
-                                        src="{image_data}"
-                                        class="graph-image"
-                                    >
-                                </div>
-                                """
-
-                        elif visual_type == (
-                            "points_graph"
-                        ):
-
-                            image_data = (
-                                draw_points_graph(
-                                    visual
-                                )
-                            )
-
-                            if image_data:
-
-                                visual_html = f"""
-                                <div class="visual-section">
-                                    <img
-                                        src="{image_data}"
-                                        class="graph-image"
-                                    >
-                                </div>
-                                """
-
-                        elif visual_type == (
-                            "geometry"
-                        ):
-
-                            image_data = draw_geometry(
+                            graph = draw_function_graph(
                                 visual
                             )
 
-                            if image_data:
+                            if graph:
 
                                 visual_html = f"""
                                 <div class="visual-section">
                                     <img
-                                        src="{image_data}"
+                                        src="{graph}"
                                         class="graph-image"
                                     >
                                 </div>
                                 """
 
-                    # ----------------------------------------
-                    # QUESTION HTML
-                    # ----------------------------------------
+                        elif visual_type == "points_graph":
+
+                            graph = draw_points_graph(
+                                visual
+                            )
+
+                            if graph:
+
+                                visual_html = f"""
+                                <div class="visual-section">
+                                    <img
+                                        src="{graph}"
+                                        class="graph-image"
+                                    >
+                                </div>
+                                """
+
+                    # ========================================
+                    # QUESTION CARD
+                    # ========================================
 
                     questions_html += f"""
 
                     <div class="question-block">
 
                         <div class="question-title">
-                            {question_title}
+
+                            {html.escape(
+                                str(
+                                    q.get(
+                                        "title",
+                                        "Question"
+                                    )
+                                )
+                            )}
+
+                            &nbsp;&nbsp;&nbsp;
+
+                            [
+                            {q.get("max_score", 0)}
+                            Marks
+                            ]
+
                         </div>
 
                         <div class="question-text">
-                            {question_text}
+
+                            {html.escape(
+                                str(
+                                    q.get(
+                                        "question_text",
+                                        ""
+                                    )
+                                )
+                            )}
+
                         </div>
 
-                        <div class="student-heading">
-                            STUDENT'S WORK
-                        </div>
+                        <table class="script-table">
 
-                        <div class="student-work">
-                            {working_html}
-                        </div>
+                            <tr>
 
-                        <div class="marking-score">
-                            SCORE: {score}/{max_question_score}
-                        </div>
+                                <td class="script-cell work-cell">
 
-                        {correct_solution_html}
+                                    <div class="student-heading">
+                                        STUDENT'S WORK
+                                    </div>
 
-                        {visual_html}
+                                    {working_lines_html}
+
+                                    {correct_working_html}
+
+                                    {visual_html}
+
+                                </td>
+
+                                <td class="script-cell marks-cell">
+
+                                    <div class="marking-heading">
+                                        MARKING
+                                    </div>
+
+                                    <div class="sub-score">
+
+                                        {q.get("score", 0)}
+
+                                        /
+
+                                        {q.get("max_score", 0)}
+
+                                    </div>
+
+                                </td>
+
+                            </tr>
+
+                        </table>
 
                     </div>
+
                     """
 
                 # --------------------------------------------
@@ -983,44 +898,40 @@ if uploaded_files:
                     {}
                 )
 
-                strengths_html = ""
-
-                for item in feedback.get(
-                    "strengths",
-                    []
-                ):
-
-                    strengths_html += (
+                strengths_html = "".join(
+                    [
                         "<li>"
-                        + html.escape(
-                            str(item)
-                        )
+                        + html.escape(str(item))
                         + "</li>"
-                    )
 
-                improvements_html = ""
+                        for item in feedback.get(
+                            "strengths",
+                            []
+                        )
+                    ]
+                )
 
-                for item in feedback.get(
-                    "improvements",
-                    []
-                ):
-
-                    improvements_html += (
+                improvements_html = "".join(
+                    [
                         "<li>"
-                        + html.escape(
-                            str(item)
-                        )
+                        + html.escape(str(item))
                         + "</li>"
-                    )
 
-                # =================================================
-                # HTML
-                # =================================================
+                        for item in feedback.get(
+                            "improvements",
+                            []
+                        )
+                    ]
+                )
+
+                # ============================================
+                # HTML AND CSS
+                # ============================================
 
                 html_content = f"""
 <!DOCTYPE html>
 
-<html>
+<html lang="en">
 
 <head>
 
@@ -1031,106 +942,221 @@ if uploaded_files:
 @page {{
     size: A4;
     margin: 15mm;
+    background-color: #fcfcfc;
 }}
 
 body {{
     font-family: Arial, sans-serif;
-    color: black;
+    color: #111;
     font-size: 11pt;
-    line-height: 1.45;
+    line-height: 1.5;
 }}
 
-.summary {{
-    border-bottom: 2px solid black;
-    padding-bottom: 12px;
-    margin-bottom: 18px;
+
+/* ========================================= */
+/* SUMMARY HEADER */
+/* ========================================= */
+
+.summary-header {{
+    border: 2px solid #d90000;
+    background-color: #fff0f0;
+    border-radius: 6px;
+    padding: 12px 20px;
+    margin-bottom: 20px;
+    text-align: center;
 }}
 
-.summary h2 {{
+.summary-header h1 {{
+    color: #d90000;
     margin: 0 0 8px 0;
+    font-size: 16pt;
+    text-transform: uppercase;
 }}
 
 .summary-stats {{
+    font-size: 14pt;
     font-weight: bold;
+    color: #b30000;
 }}
 
+.summary-stats span {{
+    margin: 0 15px;
+}}
+
+
+/* ========================================= */
+/* QUESTION CARD */
+/* ========================================= */
+
 .question-block {{
-    margin-bottom: 25px;
-    page-break-inside: avoid;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 15px;
+    margin-bottom: 20px;
 }}
 
 .question-title {{
-    color: black;
+    color: #111;
+    font-size: 11pt;
     font-weight: bold;
-    font-size: 13pt;
-    margin-bottom: 5px;
+    margin-bottom: 6px;
+    border-bottom: 1px dashed #ccc;
+    padding-bottom: 5px;
 }}
 
 .question-text {{
-    color: black;
-    font-weight: normal;
+    color: #111;
+    font-size: 10.5pt;
+    margin-bottom: 10px;
     white-space: pre-wrap;
-    margin-bottom: 12px;
+}}
+
+
+/* ========================================= */
+/* TABLE LAYOUT */
+/* ========================================= */
+
+.script-table {{
+    width: 100%;
+    border-collapse: collapse;
+}}
+
+.script-cell {{
+    vertical-align: top;
+    padding: 4px;
+}}
+
+
+/* ========================================= */
+/* STUDENT WORK - BLUE */
+/* ========================================= */
+
+.work-cell {{
+    width: 75%;
+    font-family: "Courier New", monospace;
+    font-size: 10.5pt;
+    color: #002b80;
+    background-color: #f8f9ff;
+    border-left: 3px solid #002b80;
+    padding: 10px;
 }}
 
 .student-heading {{
-    color: #0033cc;
+    color: #002b80;
     font-weight: bold;
-    margin-top: 8px;
-    margin-bottom: 4px;
-}}
-
-.student-work {{
-    color: #0033cc;
-    padding-left: 8px;
-    border-left: 2px solid #0033cc;
+    font-family: Arial, sans-serif;
+    margin-bottom: 6px;
 }}
 
 .student-line {{
-    margin-top: 5px;
+    color: #002b80;
+    margin-top: 6px;
     white-space: pre-wrap;
+}}
+
+.student-text {{
+    color: #002b80;
 }}
 
 .undone {{
     font-style: italic;
 }}
 
-.marking-line {{
-    color: #cc0000;
+
+/* ========================================= */
+/* MARKING - RED */
+/* ========================================= */
+
+.marks-cell {{
+    width: 25%;
+    text-align: right;
+    padding-left: 10px;
+}}
+
+.marking-heading {{
+    color: #d90000;
     font-weight: bold;
-    margin-top: 4px;
+    font-family: Arial, sans-serif;
+    font-size: 9.5pt;
+    margin-bottom: 6px;
+}}
+
+.tick {{
+    color: #d90000;
+    font-weight: bold;
+    font-size: 13pt;
+}}
+
+.cross {{
+    color: #d90000;
+    font-weight: bold;
+    font-size: 13pt;
+}}
+
+.mark-symbol {{
+    margin-left: 6px;
+}}
+
+.marking-line {{
+    color: #d90000;
+    font-family: Arial, sans-serif;
+    font-weight: bold;
+    font-size: 9.5pt;
+    margin-top: 3px;
 }}
 
 .marking-explanation {{
-    color: #cc0000;
-    font-size: 10pt;
-    margin-bottom: 5px;
+    color: #d90000;
+    font-family: Arial, sans-serif;
+    font-size: 9.5pt;
+    margin-bottom: 6px;
 }}
 
-.marking-score {{
-    color: #cc0000;
+.sub-score {{
     font-weight: bold;
-    margin-top: 10px;
+    color: #d90000;
+    font-size: 12pt;
+    border: 1.5px solid #d90000;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    background-color: #fff;
 }}
+
+
+/* ========================================= */
+/* CORRECT WORKING - GREEN */
+/* ========================================= */
 
 .correct-section {{
-    color: #008000;
-    margin-top: 12px;
-    padding-left: 8px;
+    background-color: #f2fff2;
     border-left: 3px solid #008000;
+    padding: 8px 10px;
+    margin-top: 12px;
+    margin-bottom: 8px;
+    border-radius: 4px;
 }}
 
 .correct-heading {{
     color: #008000;
+    font-family: Arial, sans-serif;
     font-weight: bold;
     margin-bottom: 5px;
 }}
 
 .correct-line {{
     color: #008000;
+    font-family: "Courier New", monospace;
+    font-size: 10.5pt;
     margin-top: 4px;
     white-space: pre-wrap;
 }}
+
+
+/* ========================================= */
+/* VISUALS */
+/* ========================================= */
 
 .visual-section {{
     margin-top: 12px;
@@ -1138,13 +1164,21 @@ body {{
 
 .math-table {{
     border-collapse: collapse;
-    margin-top: 10px;
+    margin: 0 auto;
+    color: #008000;
+    font-family: Arial, sans-serif;
+    font-size: 9.5pt;
 }}
 
-.math-table th,
+.math-table th {{
+    border: 1px solid #008000;
+    padding: 5px 8px;
+    background-color: #f2fff2;
+}}
+
 .math-table td {{
-    border: 1px solid black;
-    padding: 6px 10px;
+    border: 1px solid #008000;
+    padding: 5px 8px;
     text-align: center;
 }}
 
@@ -1153,45 +1187,69 @@ body {{
     height: auto;
 }}
 
-.feedback {{
-    border-top: 2px solid black;
-    margin-top: 25px;
-    padding-top: 12px;
+
+/* ========================================= */
+/* FEEDBACK */
+/* ========================================= */
+
+.feedback-box {{
+    border: 2px solid #d90000;
+    background-color: #fff0f0;
+    border-radius: 6px;
+    padding: 15px;
+    margin-top: 20px;
+    page-break-inside: avoid;
 }}
 
-.feedback h3 {{
-    margin-top: 0;
+.feedback-title {{
+    color: #d90000;
+    font-weight: bold;
+    font-size: 12pt;
+    margin-bottom: 8px;
+    text-transform: uppercase;
 }}
 
 </style>
 
 </head>
 
+
 <body>
 
-<div class="summary">
 
-<h2>
+<div class="summary-header">
+
+<h1>
 Mathematics Script Examination Result
-</h2>
+</h1>
 
 <div class="summary-stats">
 
+<span>
 TOTAL SCORE:
 {total_score}/{max_score}
+</span>
 
-&nbsp;&nbsp;&nbsp;
+|
 
+<span>
 PERCENTAGE:
 {percentage}%
+</span>
 
 </div>
 
 </div>
 
-<div>
 
-<strong>
+<div
+style="
+margin-bottom: 15px;
+font-weight: bold;
+color: #111;
+"
+>
+
 {html.escape(
     str(
         student_data.get(
@@ -1200,37 +1258,54 @@ PERCENTAGE:
         )
     )
 )}
-</strong>
 
 </div>
 
-<br>
 
 {questions_html}
 
-<div class="feedback">
 
-<h3>
-Examiner's Feedback
-</h3>
+<div class="feedback-box">
+
+<div class="feedback-title">
+Examiner's Remark &amp; Feedback
+</div>
+
+<div class="feedback-content">
+
+<ul>
+
+<li>
 
 <strong>
-Key Strengths
+Key Strengths:
 </strong>
 
 <ul>
 {strengths_html}
 </ul>
 
+</li>
+
+
+<li>
+
 <strong>
-Areas for Improvement
+Areas for Improvement:
 </strong>
 
 <ul>
 {improvements_html}
 </ul>
 
+</li>
+
+</ul>
+
 </div>
+
+</div>
+
 
 </body>
 
@@ -1238,18 +1313,14 @@ Areas for Improvement
 """
 
                 # --------------------------------------------
-                # CREATE PDF
+                # GENERATE PDF
                 # --------------------------------------------
 
-                pdf_bytes = (
-                    weasyprint.HTML(
-                        string=html_content
-                    ).write_pdf()
-                )
+                pdf_bytes = weasyprint.HTML(
+                    string=html_content
+                ).write_pdf()
 
-                st.session_state.pdf_bytes = (
-                    pdf_bytes
-                )
+                st.session_state.pdf_bytes = pdf_bytes
 
                 st.success(
                     "Evaluation complete!"
@@ -1269,9 +1340,9 @@ Areas for Improvement
 if st.session_state.pdf_bytes:
 
     st.download_button(
-        label="📄 Download Marked PDF",
+        label="📄 Download Combined Marked PDF",
         data=st.session_state.pdf_bytes,
-        file_name="marked_math_script.pdf",
+        file_name="combined_marked_script.pdf",
         mime="application/pdf"
     )
 
