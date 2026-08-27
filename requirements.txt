@@ -4,3 +4,5 @@ weasyprint
 pillow
 pypdf
 pdf2image
+matplotlib
+numpy
