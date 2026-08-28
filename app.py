@@ -182,65 +182,69 @@ if uploaded_files:
 
                 st.info(f"Loaded {len(all_images)} script page(s). Evaluating...")
 
-                # Prompt asking Gemini for Question Text and Dynamic Data Extraction
+                # Dynamic System Prompt with Strict Mathematical Integrity Rules
                 prompt = """
-                You are a math examiner evaluating a handwritten student script.
-                Analyze the image and return ONLY a valid JSON object matching this schema:
+                You are a secondary school mathematics examiner evaluating handwritten student scripts.
 
+                CRITICAL MATHEMATICAL INTEGRITY DIRECTIVES:
+                1. BEFORE outputting the JSON, independently calculate every math solution, equation root, or graphical intersection point step-by-step using exact analytical algebra.
+                2. For trigonometric equations (e.g., cos x - 2cos(x + 30) = 0), solve them algebraically to obtain exact values (e.g., tan x = sqrt(3) - 1 => x ≈ 36.2° or 216.2°) before generating output values.
+                3. Do NOT approximate or guess numerical answers. Always compute exact mathematical roots.
+                4. Extract the full written question statement into "question_text".
+
+                Return ONLY a valid JSON object matching this schema:
                 {
                     "instruction": "Exam heading/title",
                     "questions": [
                         {
-                            "title": "Question 23(a)",
-                            "question_text": "Complete the table below for y = cos x and y = 2cos(x + 30)° for 0° <= x <= 360°",
+                            "title": "Question number (e.g. Question 23(d))",
+                            "question_text": "Full text statement of the question extracted from the script page",
                             "max_score": 2,
                             "score": 0,
                             "needs_visual": "data_table",
                             "table_data": {
-                                "headers": ["x", "cos x", "2cos(x + 30)°"],
-                                "rows": [
-                                    ["0°", "1.00", "1.73"],
-                                    ["30°", "0.87", "1.00"],
-                                    ["60°", "0.50", "0.00"],
-                                    ["90°", "0.00", "-1.00"]
-                                ]
+                                "headers": ["x", "y1", "y2"],
+                                "rows": [["0°", "1.00", "1.73"]]
                             },
                             "plot_data": {
-                                "x_vals": [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360],
+                                "x_vals": [0, 30, 60, 90, 120, 150, 180],
                                 "series": [
-                                    {"label": "cos x", "y_vals": [1.0, 0.87, 0.5, 0.0, -0.5, -0.87, -1.0, -0.87, -0.5, 0.0, 0.5, 0.87, 1.0]},
-                                    {"label": "2cos(x+30)°", "y_vals": [1.73, 1.0, 0.0, -1.0, -1.73, -2.0, -1.73, -1.0, 0.0, 1.0, 1.73, 2.0, 1.73]}
+                                    {"label": "Curve 1", "y_vals": [1.0, 0.87, 0.5, 0.0, -0.5, -0.87, -1.0]}
                                 ],
                                 "xlabel": "x (degrees)",
                                 "ylabel": "y"
                             },
                             "working": [
                                 {
-                                    "text": "Table values unattempted",
+                                    "text": "Student response or Unattempted",
                                     "correct": false,
                                     "error_type": "Omission Error",
-                                    "correction": "cos x: 90°=0, 150°=-0.87...",
-                                    "explanation": "The table was left completely blank."
+                                    "correction": "Exact calculated answer (e.g., x ≈ 36.2° or 216.2°)",
+                                    "explanation": "Clear step-by-step reason explaining how the solution is derived."
                                 }
                             ]
                         }
                     ],
                     "feedback": {
-                        "strengths": ["Clear understanding of axes setup."],
-                        "improvements": ["Complete trigonometric table evaluations prior to plotting curves."]
+                        "strengths": ["Key strength"],
+                        "improvements": ["Area for improvement"]
                     }
                 }
 
                 Note:
-                - "question_text": Extract the complete problem statement from the page.
                 - "needs_visual": Set to "data_table", "function_graph", "transformation", "workflow", "geometry", or null.
-                - Provide "table_data" and "plot_data" matching the exact numbers and functions in the question.
+                - Populate "table_data" and "plot_data" derived directly from the exact question in the script.
                 """
 
                 contents_payload = all_images + [prompt]
+                
+                # API Call with Code Execution Tool Configuration enabled to enforce accurate calculations
                 response = client.models.generate_content(
                     model='gemini-3.6-flash',
-                    contents=contents_payload
+                    contents=contents_payload,
+                    config={
+                        "tools": [{"code_execution": {}}]
+                    }
                 )
 
                 # Clean response string to parse JSON safely
