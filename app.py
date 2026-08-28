@@ -2,20 +2,20 @@ import streamlit as st
 import weasyprint
 import json
 import io
-import pandas as pd
+import re
+import random
 from PIL import Image
 from google import genai
+from pypdf import PdfReader
 from pdf2image import convert_from_bytes
 
-# Configure Streamlit Page
+# Page configuration
 st.set_page_config(page_title="AI Math Script Examiner", page_icon="📝", layout="centered")
 
 st.title("📝 AI Math Script Examiner")
-st.write("Upload handwritten student scripts (JPG, PNG, or PDF) to generate an annotated PDF report.")
+st.write("Upload handwritten student scripts (JPG, PNG, or PDF) to generate a single combined annotated PDF report.")
 
-# ==========================================
-# 1. API KEY SETUP
-# ==========================================
+# Fetch API key(s) safely from Streamlit Secrets
 raw_keys = st.secrets.get("GEMINI_API_KEYS") or st.secrets.get("GEMINI_API_KEY")
 
 if not raw_keys:
@@ -29,30 +29,7 @@ elif isinstance(raw_keys, str):
 else:
     api_keys_list = [str(raw_keys).strip()]
 
-if "key_index" not in st.session_state:
-    st.session_state.key_index = 0
-
-selected_key = api_keys_list[st.session_state.key_index % len(api_keys_list)]
-st.session_state.key_index += 1
-
-client = genai.Client(api_key=selected_key)
-
-# ==========================================
-# 2. DYNAMIC TABLE RENDERER
-# ==========================================
-def generate_dynamic_table_html(table_data):
-    if not table_data or "headers" not in table_data or "rows" not in table_data:
-        return ""
-    
-    headers = table_data["headers"]
-    rows = table_data["rows"]
-    
-    df = pd.DataFrame(rows, columns=headers)
-    return df.to_html(index=False, classes="rendered-data-table")
-
-# ==========================================
-# 3. STREAMLIT INTERFACE & FILE PROCESSING
-# ==========================================
+# Allow multiple files & multiple formats
 uploaded_files = st.file_uploader(
     "Choose student script files (Images or PDFs)...", 
     type=["jpg", "jpeg", "png", "pdf"], 
@@ -61,77 +38,64 @@ uploaded_files = st.file_uploader(
 
 if uploaded_files:
     if st.button("Grade All Scripts & Generate Combined PDF", type="primary"):
-        with st.spinner("Evaluating handwriting and compiling PDF..."):
+        with st.spinner("Processing files, evaluating handwriting, and compiling PDF..."):
             try:
+                # Select API key
+                selected_key = random.choice(api_keys_list)
+                client = genai.Client(api_key=selected_key)
+                
                 all_images = []
 
+                # Convert uploaded files into PIL Images (downscaling to save token limits)
                 for file in uploaded_files:
                     file_bytes = file.read()
                     if file.name.lower().endswith('.pdf'):
                         pdf_images = convert_from_bytes(file_bytes)
                         for img in pdf_images:
-                            img.thumbnail((1024, 1024)) # Reduced slightly for faster upload/processing
+                            img.thumbnail((1280, 1280))
                             all_images.append(img)
                     else:
                         img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
-                        img.thumbnail((1024, 1024))
+                        img.thumbnail((1280, 1280))
                         all_images.append(img)
 
-                st.info(f"Loaded {len(all_images)} script page(s). Evaluating...")
+                st.info(f"Loaded {len(all_images)} total page(s). Evaluating...")
 
                 prompt = """
-                You are a secondary school mathematics examiner evaluating handwritten student scripts.
-
-                CRITICAL MATHEMATICAL INTEGRITY DIRECTIVES:
-                1. BEFORE outputting the JSON, independently calculate every math solution or equation root step-by-step using exact analytical algebra.
-                2. Do NOT approximate or guess numerical answers. Always compute exact mathematical roots.
-                3. Extract the full written question statement into "question_text".
-
-                Return ONLY a valid JSON object matching this schema exactly (do NOT include plot/graph data):
+                You are a math examiner. Analyze the uploaded student script.
+                Return ONLY a valid JSON object:
                 {
                     "instruction": "Exam heading/title",
                     "questions": [
                         {
-                            "title": "Question number (e.g. Question 23)",
-                            "question_text": "Full text statement of the question",
-                            "max_score": 2,
-                            "score": 0,
-                            "needs_visual": "data_table", 
-                            "table_data": {
-                                "headers": ["x", "y1", "y2"],
-                                "rows": [["0°", "1.00", "1.73"]]
-                            },
+                            "title": "Question 1",
+                            "max_score": 4,
+                            "score": 2,
                             "working": [
                                 {
-                                    "text": "Student response or Unattempted",
+                                    "text": "Student written line",
                                     "correct": false,
-                                    "error_type": "Omission Error",
-                                    "correction": "Exact calculated answer",
-                                    "explanation": "Clear step-by-step reason explaining derivation."
+                                    "error_type": "Calculation Error",
+                                    "correction": "Correct line output",
+                                    "explanation": "Brief 1-sentence reason for error"
                                 }
                             ]
                         }
                     ],
                     "feedback": {
-                        "strengths": ["Key strength"],
-                        "improvements": ["Area for improvement"]
+                        "strengths": ["1-2 key strengths"],
+                        "improvements": ["1-2 key improvements"]
                     }
                 }
-
-                Note:
-                - "needs_visual": Set to "data_table" ONLY if a table is explicitly required, otherwise null.
                 """
 
                 contents_payload = all_images + [prompt]
-                
                 response = client.models.generate_content(
                     model='gemini-3.6-flash',
-                    contents=contents_payload,
-                    config={
-                        "tools": [{"code_execution": {}}]
-                    }
+                    contents=contents_payload
                 )
 
+                # Clean response string
                 raw_text = response.text.strip()
                 if raw_text.startswith("```json"):
                     raw_text = raw_text[7:]
@@ -142,17 +106,15 @@ if uploaded_files:
 
                 student_data = json.loads(raw_text.strip())
 
+                # Render HTML & Generate Combined PDF
                 total_score = sum(item.get("score", 0) for item in student_data.get("questions", []))
                 max_score = sum(item.get("max_score", 0) for item in student_data.get("questions", []))
                 percentage = round((total_score / max_score) * 100, 1) if max_score > 0 else 0
 
-                # ==========================================
-                # 4. HTML COMPOSITION ENGINE
-                # ==========================================
                 questions_html = ""
                 for q in student_data.get("questions", []):
-                    question_text = q.get("question_text", "")
                     working_lines_html = ""
+                    # Safeguard: handle both 'working' and 'learner_working'
                     working_list = q.get("working") or q.get("learner_working") or []
                     
                     for step_idx, line in enumerate(working_list, start=1):
@@ -164,6 +126,8 @@ if uploaded_files:
                         err_tag = ""
                         if not is_correct and line.get("error_type"):
                             err_tag = f'<span class="err-label">{line["error_type"]}</span>'
+                        elif not is_correct and line.get("error_label"):
+                            err_tag = f'<span class="err-label">{line["error_label"]}</span>'
 
                         strikethrough_style = ' style="text-decoration: line-through;"' if not is_correct else ""
                         working_lines_html += f'<div style="margin-top: 6px;"><span{strikethrough_style}>{text}</span> {tick_or_cross} {err_tag}</div>'
@@ -171,6 +135,7 @@ if uploaded_files:
                         if not is_correct and line.get("correction"):
                             working_lines_html += f'<div class="correction">Correct Answer: {line["correction"]}</div>'
                         
+                        # Step Explanation Box with Step Badge Tags built in Python
                         if not is_correct and line.get("explanation"):
                             explanation_text = line["explanation"]
                             working_lines_html += f'''
@@ -180,26 +145,13 @@ if uploaded_files:
                             </div>
                             '''
 
-                    visual_type = q.get("needs_visual")
-                    visual_html = ""
-
-                    if visual_type == "data_table":
-                        tbl_html = generate_dynamic_table_html(q.get("table_data"))
-                        visual_html = f'<div class="table-container" style="margin-top:10px;">{tbl_html}</div>'
-
                     questions_html += f"""
                     <div class="question-block">
                         <div class="question-title">{q.get("title", "Question")} &nbsp;&nbsp;&nbsp; [{q.get("max_score", 0)} Marks]</div>
-                        {f'<div class="question-statement" style="font-weight: bold; margin-bottom: 8px; color: #333;">{question_text}</div>' if question_text else ''}
                         <table class="script-table">
                             <tr>
-                                <td class="script-cell work-cell">
-                                    {working_lines_html}
-                                    {visual_html}
-                                </td>
-                                <td class="script-cell marks-cell">
-                                    <div class="sub-score">{q.get("score", 0)} / {q.get("max_score", 0)}</div>
-                                </td>
+                                <td class="script-cell work-cell">{working_lines_html}</td>
+                                <td class="script-cell marks-cell"><div class="sub-score">{q.get("score", 0)} / {q.get("max_score", 0)}</div></td>
                             </tr>
                         </table>
                     </div>
@@ -221,7 +173,7 @@ if uploaded_files:
         .summary-stats {{ font-size: 14pt; font-weight: bold; color: #b30000; }}
         .summary-stats span {{ margin: 0 15px; }}
         .question-block {{ background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 15px; margin-bottom: 20px; }}
-        .question-title {{ font-size: 11pt; font-weight: bold; margin-bottom: 6px; border-bottom: 1px dashed #ccc; padding-bottom: 5px; }}
+        .question-title {{ font-size: 11pt; font-weight: bold; margin-bottom: 10px; border-bottom: 1px dashed #ccc; padding-bottom: 5px; }}
         .script-table {{ width: 100%; border-collapse: collapse; }}
         .script-cell {{ vertical-align: top; padding: 4px; }}
         .work-cell {{ width: 75%; font-family: "Courier New", monospace; font-size: 10.5pt; color: #002b80; background-color: #f8f9ff; border-left: 3px solid #002b80; padding: 10px; }}
@@ -235,9 +187,6 @@ if uploaded_files:
         .sub-score {{ font-weight: bold; color: #d90000; font-size: 12pt; border: 1.5px solid #d90000; padding: 4px 8px; border-radius: 4px; display: inline-block; background-color: #fff; }}
         .feedback-box {{ border: 2px solid #d90000; background-color: #fff0f0; border-radius: 6px; padding: 15px; margin-top: 20px; page-break-inside: avoid; }}
         .feedback-title {{ color: #d90000; font-weight: bold; font-size: 12pt; margin-bottom: 8px; text-transform: uppercase; }}
-        .rendered-data-table {{ width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 9.5pt; }}
-        .rendered-data-table th, .rendered-data-table td {{ border: 1px solid #0056b3; padding: 5px 8px; text-align: center; }}
-        .rendered-data-table th {{ background-color: #e6f2ff; color: #002b80; }}
     </style>
 </head>
 <body>
@@ -265,9 +214,9 @@ if uploaded_files:
 
                 st.success("Evaluation complete!")
                 st.download_button(
-                    label="📄 Download Marked PDF",
+                    label="📄 Download Combined Marked PDF",
                     data=pdf_bytes,
-                    file_name="marked_script.pdf",
+                    file_name="combined_marked_script.pdf",
                     mime="application/pdf"
                 )
 
