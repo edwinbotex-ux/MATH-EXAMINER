@@ -4,4 +4,7 @@ weasyprint
 pillow
 pdf2image
 matplotlib
+pandas
+networkx
+numpy
 pypdf
