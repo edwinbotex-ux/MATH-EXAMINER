@@ -46,22 +46,43 @@ st.session_state.key_index += 1
 client = genai.Client(api_key=selected_key)
 
 # ==========================================
-# 2. PYTHON VISUAL RENDERERS (Matplotlib & Pandas)
+# 2. DYNAMIC PYTHON VISUAL RENDERERS
 # ==========================================
-def generate_function_graph_b64():
-    """Generates Quadratic and Cubic Function Plot"""
-    fig, ax = plt.subplots(figsize=(4.5, 3), dpi=150)
-    x = np.linspace(-3, 3, 200)
-    y_quad = x**2 - 2
-    y_cubic = x**3 - 2*x
+def generate_dynamic_table_html(table_data):
+    """
+    Renders an HTML table dynamically from Gemini's extracted headers and rows.
+    """
+    if not table_data or "headers" not in table_data or "rows" not in table_data:
+        return ""
+    
+    headers = table_data["headers"]
+    rows = table_data["rows"]
+    
+    df = pd.DataFrame(rows, columns=headers)
+    return df.to_html(index=False, classes="rendered-data-table")
 
-    ax.plot(x, y_quad, color='#0056b3', label=r'$y = x^2 - 2$')
-    ax.plot(x, y_cubic, color='#d90000', label=r'$y = x^3 - 2x$')
+def generate_dynamic_graph_b64(plot_data):
+    """
+    Renders trigonometric or function plots dynamically using Gemini's extracted coordinates.
+    """
+    if not plot_data or "x_vals" not in plot_data or "series" not in plot_data:
+        return ""
+    
+    fig, ax = plt.subplots(figsize=(5, 3), dpi=150)
+    x = plot_data["x_vals"]
+    colors = ['#0056b3', '#d90000', '#008000', '#800080']
+    
+    for idx, s in enumerate(plot_data.get("series", [])):
+        color = colors[idx % len(colors)]
+        ax.plot(x, s["y_vals"], label=s.get("label", f"Curve {idx+1}"), color=color, linewidth=1.8, marker='o', markersize=3)
+        
     ax.axhline(0, color='black', linewidth=0.8, linestyle='--')
     ax.axvline(0, color='black', linewidth=0.8, linestyle='--')
-    ax.set_title('Function Verification Plot', fontsize=9, fontweight='bold')
+    ax.set_xlabel(plot_data.get("xlabel", "x"), fontsize=8)
+    ax.set_ylabel(plot_data.get("ylabel", "y"), fontsize=8)
+    ax.set_title('Expected Target Curve(s)', fontsize=9, fontweight='bold')
     ax.grid(True, linestyle=':', alpha=0.6)
-    ax.legend(fontsize=8)
+    ax.legend(fontsize=7, loc='best')
     
     buf = io.BytesIO()
     plt.savefig(buf, format='svg', bbox_inches='tight')
@@ -131,19 +152,6 @@ def generate_geometry_patches_b64():
     plt.close(fig)
     return f"data:image/svg+xml;charset=utf-8;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
 
-def generate_data_table_html(x_vals=None):
-    """Generates Clean HTML Data Table via Pandas"""
-    if x_vals is None:
-        x_vals = np.array([-2, -1, 0, 1, 2])
-    
-    table_data = {
-        "x": x_vals,
-        "f(x) = x² - 2": x_vals**2 - 2,
-        "g(x) = x³ - 2x": x_vals**3 - 2*x_vals
-    }
-    df = pd.DataFrame(table_data)
-    return df.to_html(index=False, classes="rendered-data-table")
-
 # ==========================================
 # 3. STREAMLIT INTERFACE & FILE PROCESSING
 # ==========================================
@@ -159,7 +167,7 @@ if uploaded_files:
             try:
                 all_images = []
 
-                # Convert uploaded files into PIL Images (Downscaling saves ~70% vision tokens)
+                # Convert uploaded files into PIL Images (Downscaling saves vision tokens)
                 for file in uploaded_files:
                     file_bytes = file.read()
                     if file.name.lower().endswith('.pdf'):
@@ -174,42 +182,59 @@ if uploaded_files:
 
                 st.info(f"Loaded {len(all_images)} script page(s). Evaluating...")
 
-                # Lightweight Prompt: Gemini performs evaluation and returns simple visual intent flags
+                # Prompt asking Gemini for Question Text and Dynamic Data Extraction
                 prompt = """
-                You are a math examiner. Analyze the uploaded student script.
-                Return ONLY a valid JSON object:
+                You are a math examiner evaluating a handwritten student script.
+                Analyze the image and return ONLY a valid JSON object matching this schema:
+
                 {
                     "instruction": "Exam heading/title",
                     "questions": [
                         {
-                            "title": "Question 1",
-                            "max_score": 4,
-                            "score": 2,
-                            "needs_visual": "function_graph", 
+                            "title": "Question 23(a)",
+                            "question_text": "Complete the table below for y = cos x and y = 2cos(x + 30)° for 0° <= x <= 360°",
+                            "max_score": 2,
+                            "score": 0,
+                            "needs_visual": "data_table",
+                            "table_data": {
+                                "headers": ["x", "cos x", "2cos(x + 30)°"],
+                                "rows": [
+                                    ["0°", "1.00", "1.73"],
+                                    ["30°", "0.87", "1.00"],
+                                    ["60°", "0.50", "0.00"],
+                                    ["90°", "0.00", "-1.00"]
+                                ]
+                            },
+                            "plot_data": {
+                                "x_vals": [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360],
+                                "series": [
+                                    {"label": "cos x", "y_vals": [1.0, 0.87, 0.5, 0.0, -0.5, -0.87, -1.0, -0.87, -0.5, 0.0, 0.5, 0.87, 1.0]},
+                                    {"label": "2cos(x+30)°", "y_vals": [1.73, 1.0, 0.0, -1.0, -1.73, -2.0, -1.73, -1.0, 0.0, 1.0, 1.73, 2.0, 1.73]}
+                                ],
+                                "xlabel": "x (degrees)",
+                                "ylabel": "y"
+                            },
                             "working": [
                                 {
-                                    "text": "Student written line",
+                                    "text": "Table values unattempted",
                                     "correct": false,
-                                    "error_type": "Calculation Error",
-                                    "correction": "Correct line output",
-                                    "explanation": "Brief 1-sentence reason for error"
+                                    "error_type": "Omission Error",
+                                    "correction": "cos x: 90°=0, 150°=-0.87...",
+                                    "explanation": "The table was left completely blank."
                                 }
                             ]
                         }
                     ],
                     "feedback": {
-                        "strengths": ["1-2 key strengths"],
-                        "improvements": ["1-2 key improvements"]
+                        "strengths": ["Clear understanding of axes setup."],
+                        "improvements": ["Complete trigonometric table evaluations prior to plotting curves."]
                     }
                 }
-                
-                Note on "needs_visual":
-                - Use "function_graph" if the question involves curves/functions.
-                - Use "transformation" if the question involves rotations/reflections/grid shifts.
-                - Use "workflow" if the question involves flowcharts/networks/probability trees.
-                - Use "geometry" if the question involves inscribed circles/polygons.
-                - Use "data_table" if the question involves tabular evaluation.
-                - Use null if no special visual is needed.
+
+                Note:
+                - "question_text": Extract the complete problem statement from the page.
+                - "needs_visual": Set to "data_table", "function_graph", "transformation", "workflow", "geometry", or null.
+                - Provide "table_data" and "plot_data" matching the exact numbers and functions in the question.
                 """
 
                 contents_payload = all_images + [prompt]
@@ -239,6 +264,7 @@ if uploaded_files:
                 # ==========================================
                 questions_html = ""
                 for q in student_data.get("questions", []):
+                    question_text = q.get("question_text", "")
                     working_lines_html = ""
                     working_list = q.get("working") or q.get("learner_working") or []
                     
@@ -258,7 +284,6 @@ if uploaded_files:
                         if not is_correct and line.get("correction"):
                             working_lines_html += f'<div class="correction">Correct Answer: {line["correction"]}</div>'
                         
-                        # Injects step badge tags programmatically
                         if not is_correct and line.get("explanation"):
                             explanation_text = line["explanation"]
                             working_lines_html += f'''
@@ -268,35 +293,39 @@ if uploaded_files:
                             </div>
                             '''
 
-                    # Map Gemini intent flags to local Python renderers
+                    # Map Gemini intent flags to dynamic local Python renderers
                     visual_type = q.get("needs_visual")
                     visual_html = ""
 
-                    if visual_type == "function_graph":
-                        img_b64 = generate_function_graph_b64()
-                        tbl_html = generate_data_table_html()
+                    if visual_type == "data_table":
+                        tbl_html = generate_dynamic_table_html(q.get("table_data"))
+                        visual_html = f'<div class="graph-container">{tbl_html}</div>'
+
+                    elif visual_type == "function_graph":
+                        img_b64 = generate_dynamic_graph_b64(q.get("plot_data"))
+                        tbl_html = generate_dynamic_table_html(q.get("table_data"))
                         visual_html = f'''
                         <div class="graph-container">
-                            <img src="{img_b64}" />
+                            {f'<img src="{img_b64}" />' if img_b64 else ''}
                             <div style="margin-top:10px;">{tbl_html}</div>
                         </div>
                         '''
                     elif visual_type == "transformation":
                         img_b64 = generate_transformation_graph_b64(90)
                         visual_html = f'<div class="graph-container"><img src="{img_b64}" /></div>'
+
                     elif visual_type == "workflow":
                         img_b64 = generate_network_diagram_b64()
                         visual_html = f'<div class="graph-container"><img src="{img_b64}" /></div>'
+
                     elif visual_type == "geometry":
                         img_b64 = generate_geometry_patches_b64()
                         visual_html = f'<div class="graph-container"><img src="{img_b64}" /></div>'
-                    elif visual_type == "data_table":
-                        tbl_html = generate_data_table_html()
-                        visual_html = f'<div class="graph-container">{tbl_html}</div>'
 
                     questions_html += f"""
                     <div class="question-block">
                         <div class="question-title">{q.get("title", "Question")} &nbsp;&nbsp;&nbsp; [{q.get("max_score", 0)} Marks]</div>
+                        {f'<div class="question-statement" style="font-weight: bold; margin-bottom: 8px; color: #333;">{question_text}</div>' if question_text else ''}
                         <table class="script-table">
                             <tr>
                                 <td class="script-cell work-cell">
@@ -328,7 +357,7 @@ if uploaded_files:
         .summary-stats {{ font-size: 14pt; font-weight: bold; color: #b30000; }}
         .summary-stats span {{ margin: 0 15px; }}
         .question-block {{ background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 15px; margin-bottom: 20px; }}
-        .question-title {{ font-size: 11pt; font-weight: bold; margin-bottom: 10px; border-bottom: 1px dashed #ccc; padding-bottom: 5px; }}
+        .question-title {{ font-size: 11pt; font-weight: bold; margin-bottom: 6px; border-bottom: 1px dashed #ccc; padding-bottom: 5px; }}
         .script-table {{ width: 100%; border-collapse: collapse; }}
         .script-cell {{ vertical-align: top; padding: 4px; }}
         .work-cell {{ width: 75%; font-family: "Courier New", monospace; font-size: 10.5pt; color: #002b80; background-color: #f8f9ff; border-left: 3px solid #002b80; padding: 10px; }}
