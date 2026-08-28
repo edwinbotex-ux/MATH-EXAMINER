@@ -1,10 +1,6 @@
 streamlit
-google-genai
 weasyprint
-pillow
-pdf2image
-matplotlib
 pandas
-networkx
-numpy
-pypdf
+Pillow
+google-genai
+pdf2image
