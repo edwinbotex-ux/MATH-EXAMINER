@@ -4,12 +4,16 @@ import json
 import io
 import re
 import base64
+import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import networkx as nx
 from PIL import Image
 from google import genai
 from pdf2image import convert_from_bytes
 
-# Configure Page
+# Configure Streamlit Page
 st.set_page_config(page_title="AI Math Script Examiner", page_icon="📝", layout="centered")
 
 st.title("📝 AI Math Script Examiner")
@@ -32,7 +36,7 @@ elif isinstance(raw_keys, str):
 else:
     api_keys_list = [str(raw_keys).strip()]
 
-# Round-robin key selection via session_state to prevent hitting single-key limits
+# Round-robin key selection via session_state to balance API quota usage
 if "key_index" not in st.session_state:
     st.session_state.key_index = 0
 
@@ -42,30 +46,106 @@ st.session_state.key_index += 1
 client = genai.Client(api_key=selected_key)
 
 # ==========================================
-# 2. HELPER FUNCTIONS FOR VISUALS
+# 2. PYTHON VISUAL RENDERERS (Matplotlib & Pandas)
 # ==========================================
-def generate_math_graph_base64(x_vals, y_vals, title="Graph Verification", xlabel="x", ylabel="y"):
-    """
-    Generates a clean mathematical plot using Matplotlib and encodes 
-    it as a Base64 SVG data URI for direct insertion into WeasyPrint.
-    """
-    fig, ax = plt.subplots(figsize=(4, 2.5), dpi=150)
-    ax.plot(x_vals, y_vals, color="#0056b3", linewidth=2, marker='o', markersize=4)
-    ax.set_title(title, fontsize=9, fontweight="bold")
-    ax.set_xlabel(xlabel, fontsize=8)
-    ax.set_ylabel(ylabel, fontsize=8)
-    ax.grid(True, linestyle="--", alpha=0.5)
+def generate_function_graph_b64():
+    """Generates Quadratic and Cubic Function Plot"""
+    fig, ax = plt.subplots(figsize=(4.5, 3), dpi=150)
+    x = np.linspace(-3, 3, 200)
+    y_quad = x**2 - 2
+    y_cubic = x**3 - 2*x
+
+    ax.plot(x, y_quad, color='#0056b3', label=r'$y = x^2 - 2$')
+    ax.plot(x, y_cubic, color='#d90000', label=r'$y = x^3 - 2x$')
+    ax.axhline(0, color='black', linewidth=0.8, linestyle='--')
+    ax.axvline(0, color='black', linewidth=0.8, linestyle='--')
+    ax.set_title('Function Verification Plot', fontsize=9, fontweight='bold')
+    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.legend(fontsize=8)
     
     buf = io.BytesIO()
-    plt.savefig(buf, format="svg", bbox_inches="tight")
+    plt.savefig(buf, format='svg', bbox_inches='tight')
     plt.close(fig)
+    return f"data:image/svg+xml;charset=utf-8;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+
+def generate_transformation_graph_b64(angle_deg=90):
+    """Generates Geometric Transformation Plot"""
+    fig, ax = plt.subplots(figsize=(4, 3), dpi=150)
+    orig_tri = np.array([[1, 1], [3, 1], [1.5, 2.5], [1, 1]])
+
+    theta = np.radians(angle_deg)
+    R = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+    rot_tri = (R @ orig_tri.T).T
+
+    ax.plot(orig_tri[:, 0], orig_tri[:, 1], 'b-o', label='Original')
+    ax.fill(orig_tri[:, 0], orig_tri[:, 1], 'blue', alpha=0.2)
+    ax.plot(rot_tri[:, 0], rot_tri[:, 1], 'r--o', label=f"Rotated {angle_deg}° CCW")
+    ax.fill(rot_tri[:, 0], rot_tri[:, 1], 'red', alpha=0.2)
+    ax.axhline(0, color='black', linewidth=0.8)
+    ax.axvline(0, color='black', linewidth=0.8)
+    ax.set_xlim(-4, 4)
+    ax.set_ylim(-2, 4)
+    ax.set_aspect('equal')
+    ax.set_title(f'Shape Rotation ({angle_deg}° CCW)', fontsize=9, fontweight='bold')
+    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.legend(fontsize=8)
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='svg', bbox_inches='tight')
+    plt.close(fig)
+    return f"data:image/svg+xml;charset=utf-8;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+
+def generate_network_diagram_b64():
+    """Generates Workflow / Network Diagram"""
+    fig, ax = plt.subplots(figsize=(4.5, 2.5), dpi=150)
+    G = nx.DiGraph()
+    G.add_edges_from([('Input', 'Process'), ('Process', 'Option A'), 
+                      ('Process', 'Option B'), ('Option A', 'Output'), ('Option B', 'Output')])
+    pos = {'Input': (0, 1), 'Process': (1, 1), 'Option A': (2, 1.5), 'Option B': (2, 0.5), 'Output': (3, 1)}
+
+    nx.draw(G, pos, ax=ax, with_labels=True, node_color='#e6f2ff', edge_color='#0056b3',
+            node_size=1600, font_size=8, font_weight='bold', arrowsize=12)
+    ax.set_title('Workflow / Network Model', fontsize=9, fontweight='bold')
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='svg', bbox_inches='tight')
+    plt.close(fig)
+    return f"data:image/svg+xml;charset=utf-8;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+
+def generate_geometry_patches_b64():
+    """Generates Inscribed Geometry Model"""
+    fig, ax = plt.subplots(figsize=(3, 3), dpi=150)
+    circle = patches.Circle((0.5, 0.5), 0.35, edgecolor='#800080', facecolor='#f3e6ff', linewidth=2)
+    rect = patches.Rectangle((0.2, 0.2), 0.6, 0.6, edgecolor='#006600', facecolor='none', linewidth=2, linestyle='--')
+
+    ax.add_patch(circle)
+    ax.add_patch(rect)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_aspect('equal')
+    ax.axis('off')
+    ax.set_title('Inscribed Geometry Model', fontsize=9, fontweight='bold')
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='svg', bbox_inches='tight')
+    plt.close(fig)
+    return f"data:image/svg+xml;charset=utf-8;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+
+def generate_data_table_html(x_vals=None):
+    """Generates Clean HTML Data Table via Pandas"""
+    if x_vals is None:
+        x_vals = np.array([-2, -1, 0, 1, 2])
     
-    svg_str = buf.getvalue().decode("utf-8")
-    b64_svg = base64.b64encode(svg_str.encode("utf-8")).decode("utf-8")
-    return f"data:image/svg+xml;charset=utf-8;base64,{b64_svg}"
+    table_data = {
+        "x": x_vals,
+        "f(x) = x² - 2": x_vals**2 - 2,
+        "g(x) = x³ - 2x": x_vals**3 - 2*x_vals
+    }
+    df = pd.DataFrame(table_data)
+    return df.to_html(index=False, classes="rendered-data-table")
 
 # ==========================================
-# 3. STREAMLIT INTERFACE & FILE UPLOADER
+# 3. STREAMLIT INTERFACE & FILE PROCESSING
 # ==========================================
 uploaded_files = st.file_uploader(
     "Choose student script files (Images or PDFs)...", 
@@ -79,7 +159,7 @@ if uploaded_files:
             try:
                 all_images = []
 
-                # Convert uploaded files into PIL Images (Downscaling reduces vision token costs by ~70%)
+                # Convert uploaded files into PIL Images (Downscaling saves ~70% vision tokens)
                 for file in uploaded_files:
                     file_bytes = file.read()
                     if file.name.lower().endswith('.pdf'):
@@ -92,9 +172,9 @@ if uploaded_files:
                         img.thumbnail((1280, 1280))
                         all_images.append(img)
 
-                st.info(f"Loaded {len(all_images)} script page(s). Requesting evaluation...")
+                st.info(f"Loaded {len(all_images)} script page(s). Evaluating...")
 
-                # Lightweight Prompt: Only asks Gemini for logic evaluation and raw JSON
+                # Lightweight Prompt: Gemini performs evaluation and returns simple visual intent flags
                 prompt = """
                 You are a math examiner. Analyze the uploaded student script.
                 Return ONLY a valid JSON object:
@@ -105,6 +185,7 @@ if uploaded_files:
                             "title": "Question 1",
                             "max_score": 4,
                             "score": 2,
+                            "needs_visual": "function_graph", 
                             "working": [
                                 {
                                     "text": "Student written line",
@@ -121,6 +202,14 @@ if uploaded_files:
                         "improvements": ["1-2 key improvements"]
                     }
                 }
+                
+                Note on "needs_visual":
+                - Use "function_graph" if the question involves curves/functions.
+                - Use "transformation" if the question involves rotations/reflections/grid shifts.
+                - Use "workflow" if the question involves flowcharts/networks/probability trees.
+                - Use "geometry" if the question involves inscribed circles/polygons.
+                - Use "data_table" if the question involves tabular evaluation.
+                - Use null if no special visual is needed.
                 """
 
                 contents_payload = all_images + [prompt]
@@ -140,19 +229,17 @@ if uploaded_files:
 
                 student_data = json.loads(raw_text.strip())
 
-                # Compute totals
+                # Compute score metrics
                 total_score = sum(item.get("score", 0) for item in student_data.get("questions", []))
                 max_score = sum(item.get("max_score", 0) for item in student_data.get("questions", []))
                 percentage = round((total_score / max_score) * 100, 1) if max_score > 0 else 0
 
                 # ==========================================
-                # 4. PYTHON RENDERING ENGINE (HTML/CSS)
+                # 4. PYTHON HTML COMPOSITION ENGINE
                 # ==========================================
                 questions_html = ""
                 for q in student_data.get("questions", []):
                     working_lines_html = ""
-                    
-                    # Robust key fallbacks for step evaluation array
                     working_list = q.get("working") or q.get("learner_working") or []
                     
                     for step_idx, line in enumerate(working_list, start=1):
@@ -181,11 +268,31 @@ if uploaded_files:
                             </div>
                             '''
 
-                    # Optional: Render Python chart dynamically if tabular/coordinate reference exists
-                    graph_html = ""
-                    if "graph" in q.get("title", "").lower() or "plot" in q.get("title", "").lower():
-                        sample_b64 = generate_math_graph_base64([-2, -1, 0, 1, 2], [4, 1, 0, 1, 4], title="Correct Plot Reference: y = x^2")
-                        graph_html = f'<div class="graph-container"><img src="{sample_b64}" /></div>'
+                    # Map Gemini intent flags to local Python renderers
+                    visual_type = q.get("needs_visual")
+                    visual_html = ""
+
+                    if visual_type == "function_graph":
+                        img_b64 = generate_function_graph_b64()
+                        tbl_html = generate_data_table_html()
+                        visual_html = f'''
+                        <div class="graph-container">
+                            <img src="{img_b64}" />
+                            <div style="margin-top:10px;">{tbl_html}</div>
+                        </div>
+                        '''
+                    elif visual_type == "transformation":
+                        img_b64 = generate_transformation_graph_b64(90)
+                        visual_html = f'<div class="graph-container"><img src="{img_b64}" /></div>'
+                    elif visual_type == "workflow":
+                        img_b64 = generate_network_diagram_b64()
+                        visual_html = f'<div class="graph-container"><img src="{img_b64}" /></div>'
+                    elif visual_type == "geometry":
+                        img_b64 = generate_geometry_patches_b64()
+                        visual_html = f'<div class="graph-container"><img src="{img_b64}" /></div>'
+                    elif visual_type == "data_table":
+                        tbl_html = generate_data_table_html()
+                        visual_html = f'<div class="graph-container">{tbl_html}</div>'
 
                     questions_html += f"""
                     <div class="question-block">
@@ -194,7 +301,7 @@ if uploaded_files:
                             <tr>
                                 <td class="script-cell work-cell">
                                     {working_lines_html}
-                                    {graph_html}
+                                    {visual_html}
                                 </td>
                                 <td class="script-cell marks-cell">
                                     <div class="sub-score">{q.get("score", 0)} / {q.get("max_score", 0)}</div>
@@ -208,7 +315,7 @@ if uploaded_files:
                 strengths_html = "".join([f"<li>{item}</li>" for item in feedback.get("strengths", [])])
                 improvements_html = "".join([f"<li>{item}</li>" for item in feedback.get("improvements", [])])
 
-                # Final Template Construction
+                # HTML Template for WeasyPrint
                 html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -237,6 +344,9 @@ if uploaded_files:
         .feedback-title {{ color: #d90000; font-weight: bold; font-size: 12pt; margin-bottom: 8px; text-transform: uppercase; }}
         .graph-container {{ text-align: center; margin: 10px 0; }}
         .graph-container img {{ max-width: 90%; height: auto; border: 1px solid #ccc; border-radius: 4px; padding: 4px; background: #fff; }}
+        .rendered-data-table {{ width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 9.5pt; }}
+        .rendered-data-table th, .rendered-data-table td {{ border: 1px solid #0056b3; padding: 5px 8px; text-align: center; }}
+        .rendered-data-table th {{ background-color: #e6f2ff; color: #002b80; }}
     </style>
 </head>
 <body>
@@ -260,7 +370,6 @@ if uploaded_files:
 </body>
 </html>
 """
-                # Generate PDF using WeasyPrint
                 pdf_bytes = weasyprint.HTML(string=html_content).write_pdf()
 
                 st.success("Evaluation complete!")
