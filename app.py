@@ -2,13 +2,7 @@ import streamlit as st
 import weasyprint
 import json
 import io
-import re
-import base64
-import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-import networkx as nx
 from PIL import Image
 from google import genai
 from pdf2image import convert_from_bytes
@@ -20,7 +14,7 @@ st.title("📝 AI Math Script Examiner")
 st.write("Upload handwritten student scripts (JPG, PNG, or PDF) to generate an annotated PDF report.")
 
 # ==========================================
-# 1. API KEY SETUP & SAFE HANDLING
+# 1. API KEY SETUP
 # ==========================================
 raw_keys = st.secrets.get("GEMINI_API_KEYS") or st.secrets.get("GEMINI_API_KEY")
 
@@ -28,7 +22,6 @@ if not raw_keys:
     st.error("No API key found in Streamlit Secrets!")
     st.stop()
 
-# Normalize keys into a list
 if isinstance(raw_keys, list):
     api_keys_list = [str(k).strip() for k in raw_keys]
 elif isinstance(raw_keys, str):
@@ -36,7 +29,6 @@ elif isinstance(raw_keys, str):
 else:
     api_keys_list = [str(raw_keys).strip()]
 
-# Round-robin key selection via session_state to balance API quota usage
 if "key_index" not in st.session_state:
     st.session_state.key_index = 0
 
@@ -46,12 +38,9 @@ st.session_state.key_index += 1
 client = genai.Client(api_key=selected_key)
 
 # ==========================================
-# 2. DYNAMIC PYTHON VISUAL RENDERERS
+# 2. DYNAMIC TABLE RENDERER
 # ==========================================
 def generate_dynamic_table_html(table_data):
-    """
-    Renders an HTML table dynamically from Gemini's extracted headers and rows.
-    """
     if not table_data or "headers" not in table_data or "rows" not in table_data:
         return ""
     
@@ -60,97 +49,6 @@ def generate_dynamic_table_html(table_data):
     
     df = pd.DataFrame(rows, columns=headers)
     return df.to_html(index=False, classes="rendered-data-table")
-
-def generate_dynamic_graph_b64(plot_data):
-    """
-    Renders trigonometric or function plots dynamically using Gemini's extracted coordinates.
-    """
-    if not plot_data or "x_vals" not in plot_data or "series" not in plot_data:
-        return ""
-    
-    fig, ax = plt.subplots(figsize=(5, 3), dpi=150)
-    x = plot_data["x_vals"]
-    colors = ['#0056b3', '#d90000', '#008000', '#800080']
-    
-    for idx, s in enumerate(plot_data.get("series", [])):
-        color = colors[idx % len(colors)]
-        ax.plot(x, s["y_vals"], label=s.get("label", f"Curve {idx+1}"), color=color, linewidth=1.8, marker='o', markersize=3)
-        
-    ax.axhline(0, color='black', linewidth=0.8, linestyle='--')
-    ax.axvline(0, color='black', linewidth=0.8, linestyle='--')
-    ax.set_xlabel(plot_data.get("xlabel", "x"), fontsize=8)
-    ax.set_ylabel(plot_data.get("ylabel", "y"), fontsize=8)
-    ax.set_title('Expected Target Curve(s)', fontsize=9, fontweight='bold')
-    ax.grid(True, linestyle=':', alpha=0.6)
-    ax.legend(fontsize=7, loc='best')
-    
-    buf = io.BytesIO()
-    plt.savefig(buf, format='svg', bbox_inches='tight')
-    plt.close(fig)
-    return f"data:image/svg+xml;charset=utf-8;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
-
-def generate_transformation_graph_b64(angle_deg=90):
-    """Generates Geometric Transformation Plot"""
-    fig, ax = plt.subplots(figsize=(4, 3), dpi=150)
-    orig_tri = np.array([[1, 1], [3, 1], [1.5, 2.5], [1, 1]])
-
-    theta = np.radians(angle_deg)
-    R = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
-    rot_tri = (R @ orig_tri.T).T
-
-    ax.plot(orig_tri[:, 0], orig_tri[:, 1], 'b-o', label='Original')
-    ax.fill(orig_tri[:, 0], orig_tri[:, 1], 'blue', alpha=0.2)
-    ax.plot(rot_tri[:, 0], rot_tri[:, 1], 'r--o', label=f"Rotated {angle_deg}° CCW")
-    ax.fill(rot_tri[:, 0], rot_tri[:, 1], 'red', alpha=0.2)
-    ax.axhline(0, color='black', linewidth=0.8)
-    ax.axvline(0, color='black', linewidth=0.8)
-    ax.set_xlim(-4, 4)
-    ax.set_ylim(-2, 4)
-    ax.set_aspect('equal')
-    ax.set_title(f'Shape Rotation ({angle_deg}° CCW)', fontsize=9, fontweight='bold')
-    ax.grid(True, linestyle=':', alpha=0.6)
-    ax.legend(fontsize=8)
-
-    buf = io.BytesIO()
-    plt.savefig(buf, format='svg', bbox_inches='tight')
-    plt.close(fig)
-    return f"data:image/svg+xml;charset=utf-8;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
-
-def generate_network_diagram_b64():
-    """Generates Workflow / Network Diagram"""
-    fig, ax = plt.subplots(figsize=(4.5, 2.5), dpi=150)
-    G = nx.DiGraph()
-    G.add_edges_from([('Input', 'Process'), ('Process', 'Option A'), 
-                      ('Process', 'Option B'), ('Option A', 'Output'), ('Option B', 'Output')])
-    pos = {'Input': (0, 1), 'Process': (1, 1), 'Option A': (2, 1.5), 'Option B': (2, 0.5), 'Output': (3, 1)}
-
-    nx.draw(G, pos, ax=ax, with_labels=True, node_color='#e6f2ff', edge_color='#0056b3',
-            node_size=1600, font_size=8, font_weight='bold', arrowsize=12)
-    ax.set_title('Workflow / Network Model', fontsize=9, fontweight='bold')
-
-    buf = io.BytesIO()
-    plt.savefig(buf, format='svg', bbox_inches='tight')
-    plt.close(fig)
-    return f"data:image/svg+xml;charset=utf-8;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
-
-def generate_geometry_patches_b64():
-    """Generates Inscribed Geometry Model"""
-    fig, ax = plt.subplots(figsize=(3, 3), dpi=150)
-    circle = patches.Circle((0.5, 0.5), 0.35, edgecolor='#800080', facecolor='#f3e6ff', linewidth=2)
-    rect = patches.Rectangle((0.2, 0.2), 0.6, 0.6, edgecolor='#006600', facecolor='none', linewidth=2, linestyle='--')
-
-    ax.add_patch(circle)
-    ax.add_patch(rect)
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.set_aspect('equal')
-    ax.axis('off')
-    ax.set_title('Inscribed Geometry Model', fontsize=9, fontweight='bold')
-
-    buf = io.BytesIO()
-    plt.savefig(buf, format='svg', bbox_inches='tight')
-    plt.close(fig)
-    return f"data:image/svg+xml;charset=utf-8;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
 
 # ==========================================
 # 3. STREAMLIT INTERFACE & FILE PROCESSING
@@ -163,64 +61,53 @@ uploaded_files = st.file_uploader(
 
 if uploaded_files:
     if st.button("Grade All Scripts & Generate Combined PDF", type="primary"):
-        with st.spinner("Processing files, evaluating handwriting, and compiling PDF..."):
+        with st.spinner("Evaluating handwriting and compiling PDF..."):
             try:
                 all_images = []
 
-                # Convert uploaded files into PIL Images (Downscaling saves vision tokens)
                 for file in uploaded_files:
                     file_bytes = file.read()
                     if file.name.lower().endswith('.pdf'):
                         pdf_images = convert_from_bytes(file_bytes)
                         for img in pdf_images:
-                            img.thumbnail((1280, 1280))
+                            img.thumbnail((1024, 1024)) # Reduced slightly for faster upload/processing
                             all_images.append(img)
                     else:
                         img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
-                        img.thumbnail((1280, 1280))
+                        img.thumbnail((1024, 1024))
                         all_images.append(img)
 
                 st.info(f"Loaded {len(all_images)} script page(s). Evaluating...")
 
-                # Dynamic System Prompt with Strict Mathematical Integrity Rules
                 prompt = """
                 You are a secondary school mathematics examiner evaluating handwritten student scripts.
 
                 CRITICAL MATHEMATICAL INTEGRITY DIRECTIVES:
-                1. BEFORE outputting the JSON, independently calculate every math solution, equation root, or graphical intersection point step-by-step using exact analytical algebra.
-                2. For trigonometric equations (e.g., cos x - 2cos(x + 30) = 0), solve them algebraically to obtain exact values (e.g., tan x = sqrt(3) - 1 => x ≈ 36.2° or 216.2°) before generating output values.
-                3. Do NOT approximate or guess numerical answers. Always compute exact mathematical roots.
-                4. Extract the full written question statement into "question_text".
+                1. BEFORE outputting the JSON, independently calculate every math solution or equation root step-by-step using exact analytical algebra.
+                2. Do NOT approximate or guess numerical answers. Always compute exact mathematical roots.
+                3. Extract the full written question statement into "question_text".
 
-                Return ONLY a valid JSON object matching this schema:
+                Return ONLY a valid JSON object matching this schema exactly (do NOT include plot/graph data):
                 {
                     "instruction": "Exam heading/title",
                     "questions": [
                         {
-                            "title": "Question number (e.g. Question 23(d))",
-                            "question_text": "Full text statement of the question extracted from the script page",
+                            "title": "Question number (e.g. Question 23)",
+                            "question_text": "Full text statement of the question",
                             "max_score": 2,
                             "score": 0,
-                            "needs_visual": "data_table",
+                            "needs_visual": "data_table", 
                             "table_data": {
                                 "headers": ["x", "y1", "y2"],
                                 "rows": [["0°", "1.00", "1.73"]]
-                            },
-                            "plot_data": {
-                                "x_vals": [0, 30, 60, 90, 120, 150, 180],
-                                "series": [
-                                    {"label": "Curve 1", "y_vals": [1.0, 0.87, 0.5, 0.0, -0.5, -0.87, -1.0]}
-                                ],
-                                "xlabel": "x (degrees)",
-                                "ylabel": "y"
                             },
                             "working": [
                                 {
                                     "text": "Student response or Unattempted",
                                     "correct": false,
                                     "error_type": "Omission Error",
-                                    "correction": "Exact calculated answer (e.g., x ≈ 36.2° or 216.2°)",
-                                    "explanation": "Clear step-by-step reason explaining how the solution is derived."
+                                    "correction": "Exact calculated answer",
+                                    "explanation": "Clear step-by-step reason explaining derivation."
                                 }
                             ]
                         }
@@ -232,13 +119,11 @@ if uploaded_files:
                 }
 
                 Note:
-                - "needs_visual": Set to "data_table", "function_graph", "transformation", "workflow", "geometry", or null.
-                - Populate "table_data" and "plot_data" derived directly from the exact question in the script.
+                - "needs_visual": Set to "data_table" ONLY if a table is explicitly required, otherwise null.
                 """
 
                 contents_payload = all_images + [prompt]
                 
-                # API Call with Code Execution Tool Configuration enabled to enforce accurate calculations
                 response = client.models.generate_content(
                     model='gemini-3.6-flash',
                     contents=contents_payload,
@@ -247,7 +132,6 @@ if uploaded_files:
                     }
                 )
 
-                # Clean response string to parse JSON safely
                 raw_text = response.text.strip()
                 if raw_text.startswith("```json"):
                     raw_text = raw_text[7:]
@@ -258,13 +142,12 @@ if uploaded_files:
 
                 student_data = json.loads(raw_text.strip())
 
-                # Compute score metrics
                 total_score = sum(item.get("score", 0) for item in student_data.get("questions", []))
                 max_score = sum(item.get("max_score", 0) for item in student_data.get("questions", []))
                 percentage = round((total_score / max_score) * 100, 1) if max_score > 0 else 0
 
                 # ==========================================
-                # 4. PYTHON HTML COMPOSITION ENGINE
+                # 4. HTML COMPOSITION ENGINE
                 # ==========================================
                 questions_html = ""
                 for q in student_data.get("questions", []):
@@ -297,34 +180,12 @@ if uploaded_files:
                             </div>
                             '''
 
-                    # Map Gemini intent flags to dynamic local Python renderers
                     visual_type = q.get("needs_visual")
                     visual_html = ""
 
                     if visual_type == "data_table":
                         tbl_html = generate_dynamic_table_html(q.get("table_data"))
-                        visual_html = f'<div class="graph-container">{tbl_html}</div>'
-
-                    elif visual_type == "function_graph":
-                        img_b64 = generate_dynamic_graph_b64(q.get("plot_data"))
-                        tbl_html = generate_dynamic_table_html(q.get("table_data"))
-                        visual_html = f'''
-                        <div class="graph-container">
-                            {f'<img src="{img_b64}" />' if img_b64 else ''}
-                            <div style="margin-top:10px;">{tbl_html}</div>
-                        </div>
-                        '''
-                    elif visual_type == "transformation":
-                        img_b64 = generate_transformation_graph_b64(90)
-                        visual_html = f'<div class="graph-container"><img src="{img_b64}" /></div>'
-
-                    elif visual_type == "workflow":
-                        img_b64 = generate_network_diagram_b64()
-                        visual_html = f'<div class="graph-container"><img src="{img_b64}" /></div>'
-
-                    elif visual_type == "geometry":
-                        img_b64 = generate_geometry_patches_b64()
-                        visual_html = f'<div class="graph-container"><img src="{img_b64}" /></div>'
+                        visual_html = f'<div class="table-container" style="margin-top:10px;">{tbl_html}</div>'
 
                     questions_html += f"""
                     <div class="question-block">
@@ -348,7 +209,6 @@ if uploaded_files:
                 strengths_html = "".join([f"<li>{item}</li>" for item in feedback.get("strengths", [])])
                 improvements_html = "".join([f"<li>{item}</li>" for item in feedback.get("improvements", [])])
 
-                # HTML Template for WeasyPrint
                 html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -375,8 +235,6 @@ if uploaded_files:
         .sub-score {{ font-weight: bold; color: #d90000; font-size: 12pt; border: 1.5px solid #d90000; padding: 4px 8px; border-radius: 4px; display: inline-block; background-color: #fff; }}
         .feedback-box {{ border: 2px solid #d90000; background-color: #fff0f0; border-radius: 6px; padding: 15px; margin-top: 20px; page-break-inside: avoid; }}
         .feedback-title {{ color: #d90000; font-weight: bold; font-size: 12pt; margin-bottom: 8px; text-transform: uppercase; }}
-        .graph-container {{ text-align: center; margin: 10px 0; }}
-        .graph-container img {{ max-width: 90%; height: auto; border: 1px solid #ccc; border-radius: 4px; padding: 4px; background: #fff; }}
         .rendered-data-table {{ width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 9.5pt; }}
         .rendered-data-table th, .rendered-data-table td {{ border: 1px solid #0056b3; padding: 5px 8px; text-align: center; }}
         .rendered-data-table th {{ background-color: #e6f2ff; color: #002b80; }}
@@ -407,9 +265,9 @@ if uploaded_files:
 
                 st.success("Evaluation complete!")
                 st.download_button(
-                    label="📄 Download Combined Marked PDF",
+                    label="📄 Download Marked PDF",
                     data=pdf_bytes,
-                    file_name="combined_marked_script.pdf",
+                    file_name="marked_script.pdf",
                     mime="application/pdf"
                 )
 
