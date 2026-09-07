@@ -5,13 +5,14 @@ import io
 import pandas as pd
 from PIL import Image
 from google import genai
+from google.genai import types
 from pdf2image import convert_from_bytes
 
 # Configure Streamlit Page
 st.set_page_config(page_title="Universal AI Script Examiner", page_icon="📝", layout="centered")
 
 st.title("📝 Universal AI Script Examiner")
-st.write("Upload an **Official Marking Scheme** and **Student Scripts** (JPG, PNG, or PDF) for automated, rubric-aligned grading across any subject.")
+st.write("Upload an **Official Marking Scheme** and **Student Scripts** (JPG, PNG, or PDF) for automated grading.")
 
 # ==========================================
 # 1. API KEY SETUP
@@ -38,32 +39,36 @@ st.session_state.key_index += 1
 client = genai.Client(api_key=selected_key)
 
 # ==========================================
-# 2. HELPER FUNCTIONS
+# 2. OPTIMIZED IMAGE & PDF HELPER
 # ==========================================
-def extract_images_from_files(uploaded_files):
-    """Converts uploaded PDFs or Images into a list of PIL Images."""
-    images = []
+def process_and_compress_image(img):
+    """Resizes and compresses PIL Image to JPEG bytes to minimize network latency."""
+    img.thumbnail((800, 800))  # Optimal balance between speed and legibility
+    buffer = io.BytesIO()
+    img.convert("RGB").save(buffer, format="JPEG", quality=70, optimize=True)
+    buffer.seek(0)
+    return types.Part.from_bytes(data=buffer.read(), mime_type="image/jpeg")
+
+def extract_compressed_parts_from_files(uploaded_files):
+    """Converts uploaded PDFs or Images into optimized API Image Parts directly."""
+    image_parts = []
     for file in uploaded_files:
         file_bytes = file.read()
         if file.name.lower().endswith('.pdf'):
-            pdf_images = convert_from_bytes(file_bytes)
+            # Convert at 110 DPI for speed
+            pdf_images = convert_from_bytes(file_bytes, dpi=110)
             for img in pdf_images:
-                img.thumbnail((1024, 1024))
-                images.append(img)
+                image_parts.append(process_and_compress_image(img))
         else:
-            img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
-            img.thumbnail((1024, 1024))
-            images.append(img)
-    return images
+            img = Image.open(io.BytesIO(file_bytes))
+            image_parts.append(process_and_compress_image(img))
+    return image_parts
 
 def generate_dynamic_table_html(table_data):
-    """Renders structured table data if required by the question."""
     if not table_data or "headers" not in table_data or "rows" not in table_data:
         return ""
-    
     headers = table_data["headers"]
     rows = table_data["rows"]
-    
     df = pd.DataFrame(rows, columns=headers)
     return df.to_html(index=False, classes="rendered-data-table")
 
@@ -88,16 +93,22 @@ with col2:
         key="scripts"
     )
 
+enable_code_exec = st.checkbox(
+    "Enable Code Execution (Turn on for Math/Physics/Accounting verification)", 
+    value=False, 
+    help="Disabling this speeds up evaluation for Humanities, Business Studies, and Languages."
+)
+
 if scheme_files and script_files:
     if st.button("Grade Scripts Against Marking Scheme", type="primary", use_container_width=True):
-        with st.spinner("Processing documents, evaluating against marking scheme, and compiling PDF..."):
+        with st.spinner("Compressing images, evaluating script, and generating PDF..."):
             try:
-                # Process images
-                scheme_images = extract_images_from_files(scheme_files)
-                script_images = extract_images_from_files(script_files)
+                # Optimized image processing
+                scheme_parts = extract_compressed_parts_from_files(scheme_files)
+                script_parts = extract_compressed_parts_from_files(script_files)
 
-                num_scheme_imgs = len(scheme_images)
-                num_script_imgs = len(script_images)
+                num_scheme_imgs = len(scheme_parts)
+                num_script_imgs = len(script_parts)
 
                 st.info(f"Loaded {num_scheme_imgs} Marking Scheme page(s) and {num_script_imgs} Student Script page(s). Evaluating...")
 
@@ -111,10 +122,10 @@ if scheme_files and script_files:
                 EXAMINATION DIRECTIVES:
                 1. STRICT SCHEME ALIGNMENT: Evaluate the student's work strictly against the provided Marking Scheme. Do not penalize for alternative phrasing in essay/concept questions if the underlying concept matches the scheme's criteria.
                 2. MARKS ALLOCATION: Award partial and full marks strictly according to the mark breakdowns shown in the scheme.
-                3. COMPUTATIONAL ACCURACY: For quantitative or accounting questions, verify intermediate steps and final figures independently using code execution.
+                3. COMPUTATIONAL ACCURACY: For quantitative or accounting questions, verify calculations step-by-step.
                 4. EXTRACT QUESTION STATEMENTS: Capture the question text or prompt in "question_text".
 
-                Return ONLY a valid JSON object matching this schema:
+                Return a JSON object adhering strictly to this format:
                 {{
                     "instruction": "Subject Name & Examination Header (e.g., Business Studies Paper 2 / Mathematics Mock Exam)",
                     "questions": [
@@ -141,31 +152,26 @@ if scheme_files and script_files:
                         "improvements": ["Specific concept, method, or keyword missed according to scheme"]
                     }}
                 }}
-
-                Note:
-                - "needs_visual": Set to "data_table" ONLY if tabular output is required by the marking scheme, otherwise null.
                 """
 
-                # Combine payload: scheme images first, script images second, then prompt text
-                contents_payload = scheme_images + script_images + [prompt]
+                # Construct payload
+                contents_payload = scheme_parts + script_parts + [prompt]
                 
+                # Configure API call
+                tools = [{"code_execution": {}}] if enable_code_exec else []
+                config = types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.1,
+                    tools=tools
+                )
+
                 response = client.models.generate_content(
                     model='gemini-3.6-flash',
                     contents=contents_payload,
-                    config={
-                        "tools": [{"code_execution": {}}]
-                    }
+                    config=config
                 )
 
-                raw_text = response.text.strip()
-                if raw_text.startswith("```json"):
-                    raw_text = raw_text[7:]
-                if raw_text.startswith("```"):
-                    raw_text = raw_text[3:]
-                if raw_text.endswith("```"):
-                    raw_text = raw_text[:-3]
-
-                student_data = json.loads(raw_text.strip())
+                student_data = json.loads(response.text.strip())
 
                 total_score = sum(item.get("score", 0) for item in student_data.get("questions", []))
                 max_score = sum(item.get("max_score", 0) for item in student_data.get("questions", []))
