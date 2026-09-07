@@ -1,7 +1,9 @@
+
 import streamlit as st
 import weasyprint
 import json
 import io
+import time
 import pandas as pd
 from PIL import Image
 from google import genai
@@ -39,11 +41,38 @@ st.session_state.key_index += 1
 client = genai.Client(api_key=selected_key)
 
 # ==========================================
-# 2. OPTIMIZED IMAGE & PDF HELPER
+# 2. RESILIENT API RETRY & FALLBACK ENGINE
+# ==========================================
+def generate_content_with_retry(client, contents_payload, config):
+    candidate_models = ['gemini-3.6-flash', 'gemini-3.0-flash', 'gemini-2.5-flash']
+    
+    for model_name in candidate_models:
+        for attempt in range(3):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=contents_payload,
+                    config=config
+                )
+                return response
+            except Exception as e:
+                err_msg = str(e)
+                if "404" in err_msg or "NOT_FOUND" in err_msg:
+                    break  # Skip deprecated models immediately
+                if any(code in err_msg for code in ["503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED"]):
+                    time.sleep(2 ** attempt)
+                    continue
+                else:
+                    raise e
+                    
+    raise Exception("All API candidate models are currently unavailable. Please try again shortly.")
+
+# ==========================================
+# 3. OPTIMIZED IMAGE & PDF HELPER
 # ==========================================
 def process_and_compress_image(img):
     """Resizes and compresses PIL Image to JPEG bytes to minimize network latency."""
-    img.thumbnail((800, 800))  # Optimal balance between speed and legibility
+    img.thumbnail((800, 800))
     buffer = io.BytesIO()
     img.convert("RGB").save(buffer, format="JPEG", quality=70, optimize=True)
     buffer.seek(0)
@@ -55,7 +84,6 @@ def extract_compressed_parts_from_files(uploaded_files):
     for file in uploaded_files:
         file_bytes = file.read()
         if file.name.lower().endswith('.pdf'):
-            # Convert at 110 DPI for speed
             pdf_images = convert_from_bytes(file_bytes, dpi=110)
             for img in pdf_images:
                 image_parts.append(process_and_compress_image(img))
@@ -73,7 +101,7 @@ def generate_dynamic_table_html(table_data):
     return df.to_html(index=False, classes="rendered-data-table")
 
 # ==========================================
-# 3. STREAMLIT INTERFACE
+# 4. STREAMLIT INTERFACE
 # ==========================================
 col1, col2 = st.columns(2)
 
@@ -103,7 +131,6 @@ if scheme_files and script_files:
     if st.button("Grade Scripts Against Marking Scheme", type="primary", use_container_width=True):
         with st.spinner("Compressing images, evaluating script, and generating PDF..."):
             try:
-                # Optimized image processing
                 scheme_parts = extract_compressed_parts_from_files(scheme_files)
                 script_parts = extract_compressed_parts_from_files(script_files)
 
@@ -154,10 +181,8 @@ if scheme_files and script_files:
                 }}
                 """
 
-                # Construct payload
                 contents_payload = scheme_parts + script_parts + [prompt]
                 
-                # Configure API call
                 tools = [{"code_execution": {}}] if enable_code_exec else []
                 config = types.GenerateContentConfig(
                     response_mime_type="application/json",
@@ -165,11 +190,7 @@ if scheme_files and script_files:
                     tools=tools
                 )
 
-                response = client.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=contents_payload,
-                    config=config
-                )
+                response = generate_content_with_retry(client, contents_payload, config)
 
                 student_data = json.loads(response.text.strip())
 
@@ -178,7 +199,7 @@ if scheme_files and script_files:
                 percentage = round((total_score / max_score) * 100, 1) if max_score > 0 else 0
 
                 # ==========================================
-                # 4. HTML COMPOSITION ENGINE
+                # 5. HTML COMPOSITION ENGINE
                 # ==========================================
                 questions_html = ""
                 for q in student_data.get("questions", []):
@@ -304,5 +325,3 @@ if scheme_files and script_files:
 
             except Exception as e:
                 st.error(f"Error processing scripts: {e}")
-
-
