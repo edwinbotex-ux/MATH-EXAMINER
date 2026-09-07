@@ -1,7 +1,6 @@
 streamlit
-google-genai
 weasyprint
-pillow
+pandas
+Pillow
+google-genai
 pdf2image
-matplotlib
-pypdf
