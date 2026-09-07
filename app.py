@@ -166,7 +166,7 @@ if scheme_files and script_files:
                 )
 
                 response = client.models.generate_content(
-                    model='gemini-3.6-flash',
+                    model='gemini-2.5-flash',
                     contents=contents_payload,
                     config=config
                 )
