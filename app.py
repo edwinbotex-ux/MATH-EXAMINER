@@ -1,6 +1,3 @@
-Here is the complete, updated Streamlit application. It accepts any subject—from Business Studies and Humanities to Sciences and Mathematics—by using your uploaded marking scheme as the ground truth.
-
-```python
 import streamlit as st
 import weasyprint
 import json
@@ -153,7 +150,7 @@ if scheme_files and script_files:
                 contents_payload = scheme_images + script_images + [prompt]
                 
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-3.6-flash',
                     contents=contents_payload,
                     config={
                         "tools": [{"code_execution": {}}]
